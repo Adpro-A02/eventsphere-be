@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 rocket = { version = "0.5.0", features = ["json"] }
-rocket_contrib = { version = "0.4.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -22,8 +21,9 @@ url = "2.3"
 futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+redis = { version = "0.22.0", features = ["tokio-comp"], optional = true }
+tracing-appender = "0.2"
 
 [dev-dependencies]
-rocket = { version = "0.5.0", features = ["json", "testing"] }
 mockall = "0.11"
 rstest = "0.17"
