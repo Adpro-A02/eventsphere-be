@@ -1,0 +1,40 @@
+name: Rust CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build_test:
+    name: Build and Test
+    uses: ./.github/workflows/build-test.yml
+
+  code_coverage:
+    name: Code Coverage
+    needs: build_test
+    uses: ./.github/workflows/code-coverage.yml
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    needs: code_coverage
+    uses: ./.github/workflows/sonarcloud.yml
+
+  deploy_dev:
+    name: Deploy to Development
+    if: github.ref == 'refs/heads/develop' && !github.event.pull_request
+    needs: [build_test, code_coverage, sonarcloud]
+    uses: ./.github/workflows/deploy-dev.yml
+    with:
+      ref: ${{ github.ref }}
+    secrets: inherit
+
+  deploy_prod:
+    name: Deploy to Production
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !github.event.pull_request
+    needs: [build_test, code_coverage, sonarcloud]
+    uses: ./.github/workflows/deploy-prod.yml
+    with:
+      ref: ${{ github.ref }}
+    secrets: inherit
