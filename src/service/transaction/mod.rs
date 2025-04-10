@@ -16,4 +16,9 @@ pub use payment_service::{
 };
 
 #[cfg(test)]
-pub mod tests;
+pub mod tests {
+    pub mod common;
+    pub mod transaction_service_tests;
+    pub mod balance_service_tests;
+    pub mod payment_service_tests;
+}
