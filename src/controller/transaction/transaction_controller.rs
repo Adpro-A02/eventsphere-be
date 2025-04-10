@@ -163,6 +163,14 @@ impl TransactionController {
             .or(delete_transaction)
     }
 
+    // Helper method to handle the common pattern of processing results and creating API responses
+    fn handle_result<T: Serialize>(result: Result<T, Box<dyn std::error::Error>>) -> Result<impl Reply, Rejection> {
+        match result {
+            Ok(data) => Ok(warp::reply::json(&ApiResponse::success(data))),
+            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
+        }
+    }
+
     pub async fn create_transaction_handler(
         req: CreateTransactionRequest,
         service: Arc<dyn TransactionService + Send + Sync>,
@@ -174,11 +182,8 @@ impl TransactionController {
             req.description,
             req.payment_method,
         );
-
-        match result {
-            Ok(transaction) => Ok(warp::reply::json(&ApiResponse::success(transaction))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        
+        Self::handle_result(result)
     }
 
     pub async fn process_payment_handler(
@@ -187,11 +192,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.process_payment(transaction_id, req.external_reference);
-
-        match result {
-            Ok(transaction) => Ok(warp::reply::json(&ApiResponse::success(transaction))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        Self::handle_result(result)
     }
 
     pub async fn validate_payment_handler(
@@ -199,11 +200,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.validate_payment(transaction_id);
-
-        match result {
-            Ok(valid) => Ok(warp::reply::json(&ApiResponse::success(valid))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        Self::handle_result(result)
     }
 
     pub async fn refund_transaction_handler(
@@ -211,11 +208,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.refund_transaction(transaction_id);
-
-        match result {
-            Ok(transaction) => Ok(warp::reply::json(&ApiResponse::success(transaction))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        Self::handle_result(result)
     }
 
     pub async fn get_transaction_handler(
@@ -223,11 +216,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.get_transaction(transaction_id);
-
-        match result {
-            Ok(transaction) => Ok(warp::reply::json(&ApiResponse::success(transaction))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        Self::handle_result(result)
     }
 
     pub async fn get_user_transactions_handler(
@@ -235,11 +224,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.get_user_transactions(user_id);
-
-        match result {
-            Ok(transactions) => Ok(warp::reply::json(&ApiResponse::success(transactions))),
-            Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
-        }
+        Self::handle_result(result)
     }
 
     pub async fn add_funds_handler(
@@ -247,7 +232,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.add_funds_to_balance(req.user_id, req.amount, req.payment_method);
-
+        
         match result {
             Ok((transaction, balance)) => {
                 let response = BalanceResponse {
@@ -265,7 +250,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.withdraw_funds(req.user_id, req.amount, req.description);
-
+        
         match result {
             Ok((transaction, balance)) => {
                 let response = BalanceResponse {
@@ -283,7 +268,7 @@ impl TransactionController {
         service: Arc<dyn TransactionService + Send + Sync>,
     ) -> Result<impl Reply, Rejection> {
         let result = service.delete_transaction(transaction_id);
-
+        
         match result {
             Ok(_) => Ok(warp::reply::json(&ApiResponse::<()>::success_no_content())),
             Err(e) => Err(warp::reject::custom(ApiError::from_error(e))),
