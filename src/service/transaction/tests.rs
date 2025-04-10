@@ -1,4 +1,3 @@
-use super::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::error::Error;
@@ -7,6 +6,9 @@ use chrono::Utc;
 use crate::model::transaction::{Transaction, TransactionStatus, Balance};
 use crate::repository::transaction::transaction_repo::TransactionRepository;
 use crate::repository::transaction::balance_repo::BalanceRepository;
+use crate::service::transaction::balance_service::DefaultBalanceService;
+use crate::service::transaction::payment_service::MockPaymentService;
+use crate::service::transaction::transaction_service::{TransactionService, DefaultTransactionService};
 
 struct MockTransactionRepository {
     transactions: Mutex<HashMap<Uuid, Transaction>>,
@@ -94,7 +96,14 @@ impl BalanceRepository for MockBalanceRepository {
 fn create_service() -> DefaultTransactionService {
     let transaction_repository = Arc::new(MockTransactionRepository::new());
     let balance_repository = Arc::new(MockBalanceRepository::new());
-    DefaultTransactionService::new(transaction_repository, balance_repository)
+    let balance_service = Arc::new(DefaultBalanceService::new(balance_repository));
+    let payment_service = Arc::new(MockPaymentService::new());
+    
+    DefaultTransactionService::new(
+        transaction_repository, 
+        balance_service,
+        payment_service
+    )
 }
 
 #[cfg(test)]

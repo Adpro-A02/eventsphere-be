@@ -4,9 +4,9 @@ use uuid::Uuid;
 use chrono::Utc;
 
 use crate::model::transaction::{Transaction, TransactionStatus};
-use crate::model::transaction::Balance;
 use crate::repository::transaction::transaction_repo::TransactionRepository;
-use crate::repository::transaction::balance_repo::BalanceRepository;
+use crate::service::transaction::balance_service::BalanceService;
+use crate::service::transaction::payment_service::PaymentService;
 
 pub trait TransactionService {
     fn create_transaction(
@@ -18,7 +18,6 @@ pub trait TransactionService {
         payment_method: String,
     ) -> Result<Transaction, Box<dyn Error>>;
 
-    // Process a payment through payment gateway
     fn process_payment(
         &self,
         transaction_id: Uuid,
@@ -49,45 +48,21 @@ pub trait TransactionService {
 
 pub struct DefaultTransactionService {
     transaction_repository: Arc<dyn TransactionRepository>,
-    balance_repository: Arc<dyn BalanceRepository>,
+    balance_service: Arc<dyn BalanceService>,
+    payment_service: Arc<dyn PaymentService>,
 }
 
 impl DefaultTransactionService {
     pub fn new(
         transaction_repository: Arc<dyn TransactionRepository>,
-        balance_repository: Arc<dyn BalanceRepository>
+        balance_service: Arc<dyn BalanceService>,
+        payment_service: Arc<dyn PaymentService>
     ) -> Self {
         Self {
             transaction_repository,
-            balance_repository,
+            balance_service,
+            payment_service,
         }
-    }
-    
-    // Helper method to simulate payment gateway processing
-    fn process_with_payment_gateway(&self, transaction: &Transaction) -> Result<(bool, Option<String>), Box<dyn Error>> {
-        let success = transaction.amount >= 0;
-        let reference = if success {
-            Some(format!("PG-REF-{}", Uuid::new_v4()))
-        } else {
-            None
-        };
-        
-        Ok((success, reference))
-    }
-    
-    fn get_or_create_balance(&self, user_id: Uuid) -> Result<Balance, Box<dyn Error>> {
-        match self.balance_repository.find_by_user_id(user_id)? {
-            Some(balance) => Ok(balance),
-            None => {
-                let balance = Balance::new(user_id);
-                self.balance_repository.save(&balance)?;
-                Ok(balance)
-            }
-        }
-    }
-    
-    fn save_balance(&self, balance: &Balance) -> Result<(), Box<dyn Error>> {
-        self.balance_repository.save(balance)
     }
 }
 
@@ -139,7 +114,7 @@ impl TransactionService for DefaultTransactionService {
             return self.transaction_repository.save(&updated);
         }
         
-        let (success, reference) = self.process_with_payment_gateway(&transaction)?;
+        let (success, reference) = self.payment_service.process_payment(&transaction)?;
         
         let status = if success { 
             TransactionStatus::Success 
@@ -206,9 +181,7 @@ impl TransactionService for DefaultTransactionService {
             return Err("Payment processing failed".into());
         }
         
-        let mut balance = self.get_or_create_balance(user_id)?;
-        let new_balance = balance.add_funds(amount).map_err(|e| e.to_string())?;
-        self.save_balance(&balance)?;
+        let new_balance = self.balance_service.add_funds(user_id, amount)?;
         
         Ok((processed_transaction, new_balance))
     }
@@ -223,7 +196,8 @@ impl TransactionService for DefaultTransactionService {
             return Err("Amount must be positive".into());
         }
         
-        let mut balance = self.get_or_create_balance(user_id)?;
+        // Check if user has sufficient funds first
+        let balance = self.balance_service.get_or_create_balance(user_id)?;
         if balance.amount < amount {
             return Err("Insufficient funds".into());
         }
@@ -244,8 +218,7 @@ impl TransactionService for DefaultTransactionService {
         processed_transaction.amount = -amount;
         let processed_transaction = self.transaction_repository.save(&processed_transaction)?;
         
-        let new_balance = balance.withdraw(amount).map_err(|e| e.to_string())?;
-        self.save_balance(&balance)?;
+        let new_balance = self.balance_service.withdraw_funds(user_id, amount)?;
         
         Ok((processed_transaction, new_balance))
     }
