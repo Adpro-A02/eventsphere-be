@@ -1,5 +1,5 @@
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
+use chrono::{NaiveDateTime, Utc};
 
 #[derive(Debug, Clone)]
 pub struct Review {
@@ -55,4 +55,3 @@ impl Review {
         Ok(())
     }
 }
-
