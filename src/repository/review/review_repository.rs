@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::{NaiveDateTime, Utc};
+use once_cell::sync::Lazy;
 
 #[derive(Debug, Clone)]
 pub struct Review {
@@ -74,12 +75,14 @@ impl ReviewRepository {
 
     pub fn average_rating_for_event(&self, event_id: &Uuid) -> f64 {
         let event_reviews: Vec<&Review> = self.reviews.values().filter(|r| &r.event_id == event_id).collect();
-        
+
         if event_reviews.is_empty() {
-            return 0.0; // Avoid division by zero
+            return 0.0; 
         }
 
         let total_rating: i32 = event_reviews.iter().map(|r| r.rating).sum();
         total_rating as f64 / event_reviews.len() as f64
     }
 }
+
+pub static REVIEW_REPOSITORY: Lazy<ReviewRepository> = Lazy::new(|| ReviewRepository::new());
