@@ -13,10 +13,10 @@ mock! {
     
     #[async_trait]
     impl EventRepository for EventRepo {
-        async fn create_event(&self, event: &Event) -> Result<(), String>;
-        async fn list_events(&self) -> Result<Vec<Event>, String>;
-        async fn update_event(&self, event_id: &str, updated_event: &Event) -> Result<(), String>;
-        async fn delete_event(&self, event_id: &str) -> Result<(), String>;
+        fn create_event(&self, event: &Event) -> Result<(), String>;
+        fn list_events(&self) -> Result<Vec<Event>, String>;
+        fn update_event(&self, event_id: &str, updated_event: &Event) -> Result<(), String>;
+        fn delete_event(&self, event_id: &str) -> Result<(), String>;
     }
 }
 
@@ -54,7 +54,7 @@ mod tests {
             .returning(|_| Ok(()));
         
         // Execute the method
-        let result = mock_repo.create_event(&event).await;
+        let result = mock_repo.create_event(&event);
         
         // Assert
         assert!(result.is_ok());
@@ -75,7 +75,7 @@ mod tests {
             .returning(|_| Err(String::from("Failed to create event")));
         
         // Execute the method
-        let result = mock_repo.create_event(&event).await;
+        let result = mock_repo.create_event(&event);
         
         // Assert
         assert!(result.is_err());
@@ -103,7 +103,7 @@ mod tests {
             .returning(move || Ok(expected_events.clone()));
         
         // Execute the method
-        let result = mock_repo.list_events().await;
+        let result = mock_repo.list_events();
         
         // Assert
         assert!(result.is_ok());
@@ -124,7 +124,7 @@ mod tests {
             .returning(|| Ok(vec![]));
         
         // Execute the method
-        let result = mock_repo.list_events().await;
+        let result = mock_repo.list_events();
         
         // Assert
         assert!(result.is_ok());
@@ -143,7 +143,7 @@ mod tests {
             .returning(|| Err(String::from("Database connection error")));
         
         // Execute the method
-        let result = mock_repo.list_events().await;
+        let result = mock_repo.list_events();
         
         // Assert
         assert!(result.is_err());
@@ -167,7 +167,7 @@ mod tests {
             .returning(|_, _| Ok(()));
         
         // Execute the method
-        let result = mock_repo.update_event(&event_id, &event).await;
+        let result = mock_repo.update_event(&event_id, &event);
         
         // Assert
         assert!(result.is_ok());
@@ -189,7 +189,7 @@ mod tests {
             .returning(|_, _| Err(String::from("Event not found")));
         
         // Execute the method
-        let result = mock_repo.update_event(&nonexistent_id, &event).await;
+        let result = mock_repo.update_event(&nonexistent_id, &event);
         
         // Assert
         assert!(result.is_err());
@@ -212,7 +212,7 @@ mod tests {
             .returning(|_, _| Err(String::from("Invalid UUID format")));
         
         // Execute the method
-        let result = mock_repo.update_event(invalid_id, &event).await;
+        let result = mock_repo.update_event(invalid_id, &event);
         
         // Assert
         assert!(result.is_err());
@@ -235,7 +235,7 @@ mod tests {
             .returning(|_| Ok(()));
         
         // Execute the method
-        let result = mock_repo.delete_event(&event_id).await;
+        let result = mock_repo.delete_event(&event_id);
         
         // Assert
         assert!(result.is_ok());
@@ -256,7 +256,7 @@ mod tests {
             .returning(|_| Err(String::from("Event not found")));
         
         // Execute the method
-        let result = mock_repo.delete_event(&nonexistent_id).await;
+        let result = mock_repo.delete_event(&nonexistent_id);
         
         // Assert
         assert!(result.is_err());
@@ -278,7 +278,7 @@ mod tests {
             .returning(|_| Err(String::from("Invalid UUID format")));
         
         // Execute the method
-        let result = mock_repo.delete_event(invalid_id).await;
+        let result = mock_repo.delete_event(invalid_id);
         
         // Assert
         assert!(result.is_err());
