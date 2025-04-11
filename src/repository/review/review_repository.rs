@@ -1,43 +1,3 @@
-use std::collections::HashMap;
-use uuid::Uuid;
-use chrono::{NaiveDateTime, Utc};
-use once_cell::sync::Lazy;
-
-#[derive(Debug, Clone)]
-pub struct Review {
-    pub id: Uuid,
-    pub event_id: Uuid,
-    pub user_id: Uuid,
-    pub rating: i32,
-    pub comment: String,
-    pub created_date: NaiveDateTime,
-    pub updated_date: NaiveDateTime,
-    pub status: ReviewStatus,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ReviewStatus {
-    Pending,
-    Approved,
-    Rejected,
-}
-
-impl Review {
-    pub fn new(event_id: Uuid, user_id: Uuid, rating: i32, comment: String) -> Self {
-        let now = Utc::now().naive_utc();
-        Review {
-            id: Uuid::new_v4(),
-            event_id,
-            user_id,
-            rating,
-            comment,
-            created_date: now,
-            updated_date: now,
-            status: ReviewStatus::Pending,
-        }
-    }
-}
-
 pub struct ReviewRepository {
     reviews: HashMap<Uuid, Review>,
 }
@@ -74,7 +34,10 @@ impl ReviewRepository {
     }
 
     pub fn average_rating_for_event(&self, event_id: &Uuid) -> f64 {
-        let event_reviews: Vec<&Review> = self.reviews.values().filter(|r| &r.event_id == event_id).collect();
+        let event_reviews: Vec<&Review> = self.reviews
+            .values()
+            .filter(|r| &r.event_id == event_id)
+            .collect();
 
         if event_reviews.is_empty() {
             return 0.0; 
@@ -84,5 +47,3 @@ impl ReviewRepository {
         total_rating as f64 / event_reviews.len() as f64
     }
 }
-
-pub static REVIEW_REPOSITORY: Lazy<ReviewRepository> = Lazy::new(|| ReviewRepository::new());
