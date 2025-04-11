@@ -1,14 +1,20 @@
+use std::sync::Arc;
 use crate::model::tiket::ticket::{Ticket, TicketStatus};
 use crate::repository::tiket::TicketRepository;
+use crate::events::ticket_events::{TicketEvent, TicketEventManager};
 use uuid::Uuid;
 
 pub struct TicketService {
     repository: Box<dyn TicketRepository>,
+    event_manager: Arc<TicketEventManager>,
 }
 
 impl TicketService {
-    pub fn new(repository: Box<dyn TicketRepository>) -> Self {
-        Self { repository }
+    pub fn new(
+        repository: Box<dyn TicketRepository>,
+        event_manager: Arc<TicketEventManager>
+    ) -> Self {
+        Self { repository, event_manager }
     }
 
     pub fn create_ticket(&self, event_id: Uuid, ticket_type: String, price: f64, quota: u32) -> Result<Ticket, String> {
@@ -18,7 +24,12 @@ impl TicketService {
         }
 
         let ticket = Ticket::new(event_id, ticket_type, price, quota);
-        self.repository.save(ticket)
+        let saved_ticket = self.repository.save(ticket)?;
+        
+        // Notify observers of ticket creation
+        self.event_manager.notify_observers(TicketEvent::Created(saved_ticket.clone()));
+        
+        Ok(saved_ticket)
     }
 
     pub fn get_ticket(&self, id: &Uuid) -> Result<Option<Ticket>, String> {
@@ -54,14 +65,24 @@ impl TicketService {
             }
 
             // Save updates
-            self.repository.update(ticket)
+            let updated_ticket = self.repository.update(ticket)?;
+            
+            // Notify observers of ticket update
+            self.event_manager.notify_observers(TicketEvent::Updated(updated_ticket.clone()));
+            
+            Ok(updated_ticket)
         } else {
             Err("Ticket not found".to_string())
         }
     }
 
     pub fn delete_ticket(&self, id: &Uuid) -> Result<(), String> {
-        self.repository.delete(id)
+        self.repository.delete(id)?;
+        
+        // Notify observers of ticket deletion
+        self.event_manager.notify_observers(TicketEvent::Deleted(*id));
+        
+        Ok(())
     }
 
     pub fn allocate_tickets(&self, ticket_id: &Uuid, quantity: u32) -> Result<bool, String> {
@@ -73,7 +94,19 @@ impl TicketService {
             if quantity > 0 && ticket.is_available(quantity) {
                 // Update quota
                 let new_quota = ticket.quota - quantity;
-                self.repository.update_quota(ticket_id, new_quota)?;
+                let updated_ticket = self.repository.update_quota(ticket_id, new_quota)?;
+                
+                // Notify of allocation
+                self.event_manager.notify_observers(TicketEvent::Allocated { 
+                    ticket_id: *ticket_id, 
+                    quantity 
+                });
+                
+                // Check if tickets are now sold out
+                if updated_ticket.status == TicketStatus::SOLD_OUT {
+                    self.event_manager.notify_observers(TicketEvent::SoldOut(*ticket_id));
+                }
+                
                 Ok(true)
             } else if quantity == 0 {
                 // Zero allocation is always successful
