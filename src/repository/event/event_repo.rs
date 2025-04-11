@@ -28,6 +28,7 @@ impl InMemoryEventRepo {
             events: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+    
 }
 
 impl EventRepository for InMemoryEventRepo {
