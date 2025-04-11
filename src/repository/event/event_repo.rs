@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+
 use crate::model::event::Event;
  // Import the EventRepository trait
 
@@ -11,10 +11,11 @@ use uuid::Uuid;
 
 // Ensure the EventRepository trait is defined if not already present
 pub trait EventRepository {
-    fn create_event(&self, event: &Event) -> Result<(), String>;
+    fn add(&self, event: Event) -> Result<Event, String>;
+    fn delete(&self, event_id: Uuid) -> Result<(), String>;
+    fn update_event(&self, event_id: Uuid, updated_event: Event) -> Result<Event, String>;
     fn list_events(&self) -> Result<Vec<Event>, String>;
-    fn update_event(&self, event_id: &str, updated_event: &Event) -> Result<(), String>;
-    fn delete_event(&self, event_id: &str) -> Result<(), String>;
+    fn get_by_id(&self, event_id: Uuid) -> Result<Option<Event>, String>;
 }
 
 pub struct InMemoryEventRepo {
@@ -30,43 +31,22 @@ impl InMemoryEventRepo {
 }
 
 impl EventRepository for InMemoryEventRepo {
-    fn create_event(&self, event: &Event) -> Result<(), String> {
-        let mut events = self.events.lock().unwrap();
-        let id = event.id.to_string();
-
-        if events.contains_key(&id) {
-            return Err("Event already exists".into());
-        }
-
-        events.insert(id, event.clone());
-        Ok(())
+    fn add(&self, event: Event) -> Result<Event, String>{
+        todo!();
     }
-
-    fn list_events(&self) -> Result<Vec<Event>, String> {
-        let events = self.events.lock().unwrap();
-        Ok(events.values().cloned().collect())
+    fn delete(&self, event_id: Uuid) -> Result<(), String>{
+        todo!();
     }
-
-    fn update_event(&self, event_id: &str, updated_event: &Event) -> Result<(), String> {
-        let mut events = self.events.lock().unwrap();
-
-        if !events.contains_key(event_id) {
-            return Err("Event not found".into());
-        }
-
-        events.insert(event_id.to_string(), updated_event.clone());
-        Ok(())
+    fn update_event(&self, event_id: Uuid, updated_event: Event) -> Result<Event, String>{
+        todo!();
     }
-
-    fn delete_event(&self, event_id: &str) -> Result<(), String> {
-        let mut events = self.events.lock().unwrap();
-
-        if events.remove(event_id).is_some() {
-            Ok(())
-        } else {
-            Err("Event not found".into())
-        }
+    fn list_events(&self) -> Result<Vec<Event>, String>{
+        todo!();
     }
+    fn get_by_id(&self, event_id: Uuid) -> Result<Option<Event>, String>{
+        todo!();
+    }
+   
 }
 
 
