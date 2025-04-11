@@ -4,6 +4,8 @@ use crate::model::event::{Event, EventStatus};
 
 #[cfg(test)]
 mod tests {
+    use chrono::Duration;
+
     use super::*;
     
     
@@ -116,7 +118,7 @@ mod tests {
         assert_eq!(event.base_price, -50.0);
     }
     fn test_update_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         let new_date = chrono::Local::now().naive_local() + Duration::days(60);
         
         event.update(
@@ -136,7 +138,7 @@ mod tests {
     
     #[test]
     fn test_partial_update_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         let original_date = event.event_date;
         let original_location = event.location.clone();
         
@@ -158,7 +160,7 @@ mod tests {
     
     #[test]
     fn test_change_status() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         
         event.change_status(EventStatus::Published);
         assert!(matches!(event.status, EventStatus::Published));
@@ -169,7 +171,7 @@ mod tests {
     
     #[test]
     fn test_publish_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         
         let result = event.publish();
         assert!(result.is_ok());
@@ -178,7 +180,7 @@ mod tests {
     
     #[test]
     fn test_publish_event_with_empty_title() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         event.title = String::from("");
         
         let result = event.publish();
@@ -189,7 +191,7 @@ mod tests {
     
     #[test]
     fn test_publish_event_with_past_date() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         let past_date = chrono::Local::now().naive_local() - Duration::days(1);
         event.event_date = past_date;
         
@@ -201,7 +203,7 @@ mod tests {
     
     #[test]
     fn test_cancel_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         event.change_status(EventStatus::Published);
         
         let result = event.cancel();
@@ -211,7 +213,7 @@ mod tests {
     
     #[test]
     fn test_cancel_completed_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         event.change_status(EventStatus::Completed);
         
         let result = event.cancel();
@@ -222,7 +224,7 @@ mod tests {
     
     #[test]
     fn test_complete_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         event.change_status(EventStatus::Published);
         
         let result = event.complete();
@@ -232,7 +234,7 @@ mod tests {
     
     #[test]
     fn test_complete_draft_event() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
          
         
         let result = event.complete();
@@ -243,7 +245,7 @@ mod tests {
     
     #[test]
     fn test_is_free() {
-        let mut event = create_test_event();
+        let mut event = create_default_event();
         assert!(!event.is_free());  
         
         event.base_price = 0.0;
