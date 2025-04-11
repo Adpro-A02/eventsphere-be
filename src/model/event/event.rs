@@ -3,7 +3,7 @@ use rocket::serde::{Deserialize,Serialize};
 use chrono::NaiveDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum EventStatus {
     Published,
     Completed,
@@ -11,7 +11,7 @@ pub enum EventStatus {
     Draft,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     pub id: Uuid,
     pub title: String,
