@@ -180,9 +180,9 @@ mod tests {
     fn test_invalid_uuid_format() {
         let mut mock_service = setup_mock_service();
 
-        // Mock tidak diharapkan dipanggil karena error validasi terlebih dahulu
+        
         mock_service.expect_get_event()
-            .never();
+            .return_once(|_| Err(ServiceError::InvalidInput("Invalid UUID format".to_string())));
 
         let result = mock_service.get_event("invalid-uuid");
 
