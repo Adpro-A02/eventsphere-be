@@ -6,11 +6,11 @@ use crate::model::event::{Event, EventStatus};
 mod tests {
     use super::*;
     
-    // Helper function to create a default event
+    
     fn create_default_event() -> Event {
         let id = Uuid::new_v4();
         let title = String::from("Tech Talk");
-        let description = String::from("Tech Talk about Rust");
+        let description = String::from("Tech Talk about ADPRO");
         let event_date = NaiveDateTime::parse_from_str("2025-05-01 18:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
         let location = String::from("Fasilkom UI");
         let base_price = 100.0;
@@ -36,7 +36,7 @@ mod tests {
         assert_eq!(event.location, "Fasilkom UI");
         assert_eq!(event.base_price, 100.0);
         
-        // Test that the enum variant matches
+        
         match event.status {
             EventStatus::Draft => assert!(true),
             _ => assert!(false, "Status should be Draft"),
@@ -64,18 +64,17 @@ mod tests {
     fn test_different_event_statuses() {
         let mut event = create_default_event();
         
-        // Test Draft status
+       
         assert!(matches!(event.status, EventStatus::Draft));
-        
-        // Test Published status
+      
         event.status = EventStatus::Published;
         assert!(matches!(event.status, EventStatus::Published));
         
-        // Test Completed status
+        
         event.status = EventStatus::Completed;
         assert!(matches!(event.status, EventStatus::Completed));
         
-        // Test Cancelled status
+        
         event.status = EventStatus::Cancelled;
         assert!(matches!(event.status, EventStatus::Cancelled));
     }
@@ -84,15 +83,15 @@ mod tests {
     fn test_event_with_empty_fields() {
         let mut event = create_default_event();
         
-        // Test with empty title
+        
         event.title = String::from("");
         assert_eq!(event.title, "");
         
-        // Test with empty description
+      
         event.description = String::from("");
         assert_eq!(event.description, "");
         
-        // Test with empty location
+     
         event.location = String::from("");
         assert_eq!(event.location, "");
     }
@@ -102,8 +101,7 @@ mod tests {
         let event1 = create_default_event();
         let mut event2 = event1.clone();
         
-        // Modified event should not match the original in a business logic sense
-        // even though they have the same ID
+       
         event2.title = String::from("Modified Title");
         assert_ne!(event1.title, event2.title);
         assert_eq!(event1.id, event2.id);
@@ -114,8 +112,144 @@ mod tests {
         let mut event = create_default_event();
         event.base_price = -50.0;
         
-        // This just verifies we can set a negative price
-        // In a real app, you might want validation to prevent this
+        
         assert_eq!(event.base_price, -50.0);
+    }
+    fn test_update_event() {
+        let mut event = create_test_event();
+        let new_date = chrono::Local::now().naive_local() + Duration::days(60);
+        
+        event.update(
+            Some(String::from("Updated Tech Talk")),
+            Some(String::from("Updated description")),
+            Some(new_date),
+            Some(String::from("New Location")),
+            Some(150.0)
+        );
+        
+        assert_eq!(event.title, "Updated Tech Talk");
+        assert_eq!(event.description, "Updated description");
+        assert_eq!(event.location, "New Location");
+        assert_eq!(event.base_price, 150.0);
+        assert_eq!(event.event_date, new_date);
+    }
+    
+    #[test]
+    fn test_partial_update_event() {
+        let mut event = create_test_event();
+        let original_date = event.event_date;
+        let original_location = event.location.clone();
+        
+      
+        event.update(
+            Some(String::from("Updated Title Only")),
+            None,
+            None,
+            None,
+            Some(200.0)
+        );
+        
+        assert_eq!(event.title, "Updated Title Only");
+        assert_eq!(event.description, "Tech Talk about ADPRO"); 
+        assert_eq!(event.location, original_location); 
+        assert_eq!(event.base_price, 200.0);
+        assert_eq!(event.event_date, original_date); 
+    }
+    
+    #[test]
+    fn test_change_status() {
+        let mut event = create_test_event();
+        
+        event.change_status(EventStatus::Published);
+        assert!(matches!(event.status, EventStatus::Published));
+        
+        event.change_status(EventStatus::Cancelled);
+        assert!(matches!(event.status, EventStatus::Cancelled));
+    }
+    
+    #[test]
+    fn test_publish_event() {
+        let mut event = create_test_event();
+        
+        let result = event.publish();
+        assert!(result.is_ok());
+        assert!(matches!(event.status, EventStatus::Published));
+    }
+    
+    #[test]
+    fn test_publish_event_with_empty_title() {
+        let mut event = create_test_event();
+        event.title = String::from("");
+        
+        let result = event.publish();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Event title cannot be empty");
+        assert!(matches!(event.status, EventStatus::Draft)); 
+    }
+    
+    #[test]
+    fn test_publish_event_with_past_date() {
+        let mut event = create_test_event();
+        let past_date = chrono::Local::now().naive_local() - Duration::days(1);
+        event.event_date = past_date;
+        
+        let result = event.publish();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Event date must be in the future");
+        assert!(matches!(event.status, EventStatus::Draft)); 
+    }
+    
+    #[test]
+    fn test_cancel_event() {
+        let mut event = create_test_event();
+        event.change_status(EventStatus::Published);
+        
+        let result = event.cancel();
+        assert!(result.is_ok());
+        assert!(matches!(event.status, EventStatus::Cancelled));
+    }
+    
+    #[test]
+    fn test_cancel_completed_event() {
+        let mut event = create_test_event();
+        event.change_status(EventStatus::Completed);
+        
+        let result = event.cancel();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Cannot cancel a completed event");
+        assert!(matches!(event.status, EventStatus::Completed)); 
+    }
+    
+    #[test]
+    fn test_complete_event() {
+        let mut event = create_test_event();
+        event.change_status(EventStatus::Published);
+        
+        let result = event.complete();
+        assert!(result.is_ok());
+        assert!(matches!(event.status, EventStatus::Completed));
+    }
+    
+    #[test]
+    fn test_complete_draft_event() {
+        let mut event = create_test_event();
+         
+        
+        let result = event.complete();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Only published events can be marked as completed");
+        assert!(matches!(event.status, EventStatus::Draft)); 
+    }
+    
+    #[test]
+    fn test_is_free() {
+        let mut event = create_test_event();
+        assert!(!event.is_free());  
+        
+        event.base_price = 0.0;
+        assert!(event.is_free()); 
+        
+        event.base_price = -1.0;
+        assert!(event.is_err()); 
     }
 }
