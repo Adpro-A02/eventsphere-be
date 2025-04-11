@@ -59,7 +59,7 @@ impl DefaultEventService{
     
        
         self.runtime
-            .block_on(self.event_repository.add(event.clone()))
+            .block_on(async { self.event_repository.add(event.clone()) })
             .map_err(ServiceError::RepositoryError)?;
     
         Ok(event)
@@ -74,13 +74,14 @@ impl DefaultEventService{
             .map_err(|_| ServiceError::InvalidInput("Invalid UUID format".to_string()))?;
     
         let events = self.runtime
-            .block_on(self.event_repository.list_events())
+            .block_on(async { self.event_repository.list_events() })
             .map_err(ServiceError::RepositoryError)?;
     
         events.into_iter()
             .find(|e| e.id == parsed_id)
             .ok_or(ServiceError::NotFound)
     }
+    
     
 
     pub fn update_event(
@@ -99,7 +100,7 @@ impl DefaultEventService{
     
         let updated = self
             .runtime
-            .block_on(self.event_repository.update_event(parsed_id, updated_event))
+            .block_on(async { self.event_repository.update_event(parsed_id, updated_event) })
             .map_err(ServiceError::RepositoryError)?;
     
         Ok(updated)
