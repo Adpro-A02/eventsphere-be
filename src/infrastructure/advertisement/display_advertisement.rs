@@ -6,23 +6,23 @@ use std::sync::Arc;
 use crate::model::advertisement::advertisement::{Advertisement, AdvertisementStatus};
 
 #[async_trait]
-pub trait AdvertisementDisplay: Send + Sync {
+pub trait AdvertisementDisplayStrategy: Send + Sync {
     async fn prepare_for_display(&self, advertisement: Advertisement) -> Advertisement;
 }
 
-pub struct DefaultDisplay;
+pub struct DefaultDisplayStrategy;
 
 #[async_trait]
-impl AdvertisementDisplay for DefaultDisplay {
+impl AdvertisementDisplayStrategy for DefaultDisplayStrategy {
     async fn prepare_for_display(&self, advertisement: Advertisement) -> Advertisement {
         advertisement
     }
 }
 
-pub struct ActiveOnlyDisplay;
+pub struct ActiveOnlyDisplayStrategy;
 
 #[async_trait]
-impl AdvertisementDisplay for ActiveOnlyDisplay {
+impl AdvertisementDisplayStrategy for ActiveOnlyDisplayStrategy {
     async fn prepare_for_display(&self, mut advertisement: Advertisement) -> Advertisement {
         // Check if ad is expired (end_date < now)
         let now = Utc::now();
@@ -34,28 +34,28 @@ impl AdvertisementDisplay for ActiveOnlyDisplay {
     }
 }
 
-pub struct DisplayFactory {
-    strategies: HashMap<String, Arc<dyn AdvertisementDisplay>>,
+pub struct DisplayStrategyFactory {
+    strategies: HashMap<String, Arc<dyn AdvertisementDisplayStrategy>>,
 }
 
-impl DisplayFactory {
+impl DisplayStrategyFactory {
     pub fn new() -> Self {
         let mut strategies = HashMap::new();
         strategies.insert(
             "default".to_string(), 
-            Arc::new(DefaultDisplay) as Arc<dyn AdvertisementDisplay>
+            Arc::new(DefaultDisplayStrategy) as Arc<dyn AdvertisementDisplayStrategy>
         );
         strategies.insert(
             "active_only".to_string(), 
-            Arc::new(ActiveOnlyDisplay) as Arc<dyn AdvertisementDisplay>
+            Arc::new(ActiveOnlyDisplayStrategy) as Arc<dyn AdvertisementDisplayStrategy>
         );
         
-        DisplayFactory { strategies }
+        DisplayStrategyFactory { strategies }
     }
     
-    pub fn get_(&self, _name: &str) -> Arc<dyn AdvertisementDisplay> {
+    pub fn get_strategy(&self, strategy_name: &str) -> Arc<dyn AdvertisementDisplayStrategy> {
         self.strategies
-            .get(_name)
+            .get(strategy_name)
             .unwrap_or_else(|| self.strategies.get("default").unwrap())
             .clone()
     }
