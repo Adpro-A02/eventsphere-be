@@ -30,10 +30,12 @@ impl From<String> for ServiceError {
 pub struct DefaultEventService<R: EventRepository> {
     repository: Arc<R>,
     runtime: Runtime,
+    events: Vec<Event>, 
 }
 
+
 impl<R: EventRepository> DefaultEventService<R>{
-    pub fn new(repository: Arc<R>) -> Self {
+    pub fn new() -> Self {
         todo!()
     }
 
