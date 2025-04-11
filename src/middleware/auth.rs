@@ -1,7 +1,6 @@
-// src/middleware/auth.rs
 use rocket::{request::{self, FromRequest, Request}, outcome::Outcome};
 use rocket::http::Status;
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,7 +33,7 @@ impl<'r> FromRequest<'r> for JwtToken {
             
         let token = match token {
             Some(token) => token,
-            None => return Outcome::Failure((Status::Unauthorized, ())),
+            None => return Outcome::Error((Status::Unauthorized, ())),
         };
         
         // Get the secret key from configuration
@@ -47,7 +46,7 @@ impl<'r> FromRequest<'r> for JwtToken {
             &Validation::new(Algorithm::HS256),
         ) {
             Ok(c) => c,
-            Err(_) => return Outcome::Failure((Status::Unauthorized, ())),
+            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
         };
         
         // Create a JwtToken from the decoded data
