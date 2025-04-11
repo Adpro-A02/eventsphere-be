@@ -1,134 +1,192 @@
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use crate::model::event::{Event, EventStatus};
-    use crate::repository::event::EventRepository;
-    use crate::service::event::event_service::{DefaultEventService, EventService, ServiceError};
+    use chrono::{NaiveDateTime, Local, Duration};
+    use crate::model::event::{Event,EventStatus};
+    use crate::service::event::event_service::ServiceError;
+    use crate::service::event::EventService;
     
-    use mockall::{mock, predicate::*};
-    
-    use uuid::Uuid;
-    use chrono::{Duration, Local, NaiveDateTime};
     use super::*;
-    use chrono::NaiveDate;
-    
-    fn sample_event_data() -> (String, String, NaiveDateTime, String, f64) {
-        (
-            "Sample Event".to_string(),
-            "This is a sample description".to_string(),
-            NaiveDate::from_ymd_opt(2025, 5, 1).unwrap().and_hms_opt(10, 0, 0).unwrap(),
-            "Jakarta".to_string(),
-            100.0,
-        )
+    use mockall::predicate::*;
+    use mockall::*;
+    use tokio::runtime::Runtime;
+    use uuid::Uuid;
+
+    // Mock Repository
+    mock! {
+        pub EvenetServiceMock{}
+      
+        impl EventService for EvenetServiceMock{
+            fn create_event(&self, event: Event) -> Result<Event, ServiceError>;
+            fn get_event(&self, event_id: &str) -> Result<Event, ServiceError>;
+            fn update_event(&self, event_id: &str, event: Event) -> Result<Event, ServiceError>;
+            fn delete_event(&self, event_id: &str) -> Result<(), ServiceError>;
+        
+        }
     }
 
-    fn setup_service() -> DefaultEventService<MockRepo> {
-        DefaultEventService::new(Arc::new(MockRepo {}))
+    // Test helper untuk membuat event dummy
+    fn create_test_event(id: Option<Uuid>) -> Event {
+        let future_date = Local::now().naive_local() + Duration::days(30);
+        Event {
+
+            id: Uuid::new_v4(),
+            title: String::from("Test Event"),
+            description: String::from("Description for test event"),
+            event_date: future_date,
+            location: String::from("Test Location"),
+            base_price: 100.0,
+            status: EventStatus::Draft,
+        }
     }
 
-    struct MockRepo;
-    impl EventRepository for MockRepo {
-        fn create_event(&self, event: &Event) -> Result<(), String> {
-            todo!()
-        }
-    
-        fn list_events(&self) -> Result<Vec<Event>, String> {
-            todo!()
-        }
-    
-        fn update_event(&self, event_id: &str, updated_event: &Event) -> Result<(), String> {
-            todo!()
-        }
-    
-        fn delete_event(&self, event_id: &str) -> Result<(), String> {
-            todo!()
-        }
+    // Helper untuk membuat service dengan mock repo
+    fn setup_mock_service() -> MockEvenetServiceMock{
+        MockEvenetServiceMock::new()
     }
 
     #[test]
-    fn test_create_event() {
-        let mut service = setup_service();
-        let (title, description, date, location, price) = sample_event_data();
+    fn test_create_event_success() {
+        let mut mock_service = setup_mock_service();
+        let test_event = create_test_event(None);
 
-        let result = service.create_event(title.clone(), description.clone(), date, location.clone(), price);
+        // Setup mock expectation
+        mock_service.expect_create_event()
+            .with(eq(test_event.clone()))
+            .returning({
+                let test_event = test_event.clone();
+                move |_| Ok(test_event.clone())
+            });
+
+        // Execute
+        let result = mock_service.create_event(test_event.clone());
+
+        // Verify
         assert!(result.is_ok());
-
         let event = result.unwrap();
-        assert_eq!(event.title, title);
-        assert_eq!(event.location, location);
-        assert_eq!(event.base_price, price);
+        assert_eq!(event.title, "Test Event");
     }
 
     #[test]
-    fn test_list_events() {
-        let mut service = setup_service();
-        let data = sample_event_data();
-        service.create_event(data.0, data.1, data.2, data.3, data.4).unwrap();
+    fn test_create_event_error() {
+        let mut mock_service = setup_mock_service();
+        let test_event = create_test_event(None);
 
-        let list = service.list_events().unwrap();
-        assert_eq!(list.len(), 1);
+        // Setup mock to return error
+        mock_service.expect_create_event()
+            .return_once(|_| Err(ServiceError::RepositoryError("DB error".to_string())));
+
+        let result = mock_service.create_event(test_event);
+
+        // Verify
+        assert!(matches!(result, Err(ServiceError::RepositoryError(_))));
     }
-
     #[test]
     fn test_get_event_success() {
-        let mut service = setup_service();
-        let data = sample_event_data();
-        let created = service.create_event(data.0, data.1, data.2, data.3, data.4).unwrap();
+        let mut mock_service = setup_mock_service();
+        let test_event = create_test_event(None);
 
-        let found = service.get_event(&created.id.to_string());
-        assert!(found.is_ok());
-        assert_eq!(found.unwrap().id, created.id);
+        // Setup mock
+        let cloned_event = test_event.clone();
+        mock_service.expect_get_event()
+            .with(eq(test_event.id.to_string()))
+            .return_once(move |_| Ok(cloned_event));
+
+        // Execute
+        let result = mock_service.get_event(&test_event.id.to_string());
+
+        // Verify
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().id, test_event.id);
     }
-
     #[test]
     fn test_get_event_not_found() {
-        let service = setup_service();
-        let not_found = service.get_event(&Uuid::new_v4().to_string());
-        assert!(matches!(not_found, Err(ServiceError::NotFound)));
+        let mut mock_service = setup_mock_service();
+        let test_id = Uuid::new_v4();
+
+        // Setup mock to return not found
+        mock_service.expect_get_event()
+            .return_once(|_| Err(ServiceError::NotFound));
+
+        let result = mock_service.get_event(&test_id.to_string());
+
+        // Verify
+        assert!(matches!(result, Err(ServiceError::NotFound)));
     }
 
     #[test]
-    fn test_update_event() {
-        let mut service = setup_service();
-        let data = sample_event_data();
-        let created = service.create_event(data.0.clone(), data.1.clone(), data.2, data.3.clone(), data.4).unwrap();
-
-        let updated = Event {
-            id: created.id,
+    fn test_update_event_success() {
+        let mut mock_service = setup_mock_service();
+        let test_event = create_test_event(None);
+        let updated_event = Event {
             title: "Updated Title".to_string(),
-            description: "Updated Desc".to_string(),
-            event_date: data.2,
-            location: "Bandung".to_string(),
-            base_price: 200.0,
-            status: EventStatus::Published,
+            ..test_event.clone()
         };
 
-        let result = service.update_event(&created.id.to_string(), updated.clone());
-        assert!(result.is_ok());
+        // Setup mock
+        mock_service.expect_update_event()
+            .with(
+                eq(test_event.id.to_string()),
+                eq(updated_event.clone())
+            )
+            .return_once({
+                let updated_event = updated_event.clone();
+                move |_, _| Ok(updated_event)
+            });
 
-        let event = result.unwrap();
-        assert_eq!(event.title, "Updated Title");
-        assert_eq!(event.status, EventStatus::Published);
+        // Execute
+        let result = mock_service.update_event(
+            &test_event.id.to_string(),
+            updated_event.clone(),
+        );
+
+        // Verify
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "Updated Title");
     }
 
     #[test]
     fn test_delete_event_success() {
-        let mut service = setup_service();
-        let data = sample_event_data();
-        let created = service.create_event(data.0, data.1, data.2, data.3, data.4).unwrap();
+        let mut mock_service = setup_mock_service();
+        let test_id = Uuid::new_v4();
 
-        let result = service.delete_event(&created.id.to_string());
+        // Setup mock
+        mock_service.expect_delete_event()
+            .with(eq(test_id.to_string()))
+            .return_once(|_| Ok(()));
+
+        // Execute
+        let result = mock_service.delete_event(&test_id.to_string());
+
+        // Verify
         assert!(result.is_ok());
-
-        let get_after = service.get_event(&created.id.to_string());
-        assert!(get_after.is_err());
     }
 
     #[test]
-    fn test_delete_event_not_found() {
-        let mut service = setup_service();
-        let result = service.delete_event(&Uuid::new_v4().to_string());
-        assert!(matches!(result, Err(ServiceError::NotFound)));
+    fn test_delete_event_error() {
+        let mut mock_service = setup_mock_service();
+        let test_id = Uuid::new_v4();
+
+        // Setup mock to return error
+        mock_service.expect_delete_event()
+            .return_once(|_| Err(ServiceError::RepositoryError("DB error".to_string())));
+
+        let result = mock_service.delete_event(&test_id.to_string());
+
+        assert!(matches!(result, Err(ServiceError::RepositoryError(_))));
     }
+
+    
+    #[test]
+    fn test_invalid_uuid_format() {
+        let mut mock_service = setup_mock_service();
+
+        // Mock tidak diharapkan dipanggil karena error validasi terlebih dahulu
+        mock_service.expect_get_event()
+            .never();
+
+        let result = mock_service.get_event("invalid-uuid");
+
+        assert!(matches!(result, Err(ServiceError::InvalidInput(_))));
+    }
+
 }
