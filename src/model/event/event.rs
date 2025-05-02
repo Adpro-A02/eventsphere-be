@@ -1,17 +1,16 @@
-use rocket::serde::{Deserialize,Serialize};
-
 use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum EventStatus {
-    Published,
-    Completed,
-    Cancelled,
     Draft,
+    Published,
+    Cancelled,
+    Completed,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: Uuid,
     pub title: String,
@@ -22,9 +21,7 @@ pub struct Event {
     pub status: EventStatus,
 }
 
-
 impl Event {
-   
     pub fn new(
         title: String, 
         description: String, 
@@ -118,11 +115,32 @@ impl Event {
         Ok(())
     }
     
-    // Method untuk mengecek apakah harga tiket gratis / harga diabwah 0
+    
     pub fn is_free(&self) -> bool {
         self.base_price == 0.0
     }
+    
     pub fn is_err(&self) -> bool {
         self.base_price < 0.0
     }
+}
+
+// DTO for creating a new event
+#[derive(Debug, Deserialize)]
+pub struct CreateEventDto {
+    pub title: String,
+    pub description: String,
+    pub event_date: NaiveDateTime,
+    pub location: String,
+    pub base_price: f64,
+}
+
+// DTO for updating an event
+#[derive(Debug, Deserialize)]
+pub struct UpdateEventDto {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub event_date: Option<NaiveDateTime>,
+    pub location: Option<String>,
+    pub base_price: Option<f64>,
 }
