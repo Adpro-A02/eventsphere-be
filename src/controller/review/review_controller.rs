@@ -1,8 +1,7 @@
-use actix_web::{web, HttpResponse, Responder, Error};
+use actix_web::{web, HttpResponse, Responder};
 use crate::models::review::{Review, ReviewStatus};
 use crate::models::review_service::ReviewService;
 use crate::models::review_repository::ReviewRepository;
-use crate::models::notification_service::NotificationService;
 use uuid::Uuid;
 
 pub async fn create_review(
@@ -21,7 +20,7 @@ pub async fn update_review(
 ) -> impl Responder {
     let review_id = review_id.into_inner();
     let mut review = review_data.into_inner();
-    review.id = review_id; 
+    review.id = review_id;
     let updated_review = service.update_review(review);
     HttpResponse::Ok().json(updated_review)
 }
@@ -56,19 +55,19 @@ pub async fn get_average_rating(
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::resource("/reviews")
-            .route(web::post().to(create_review))
-            .route(web::put().to(update_review))
+            .route(web::post().to(create_review))  
     )
     .service(
-        web::resource("/reviews/{id}")
-            .route(web::delete().to(delete_review))
+        web::resource("/reviews/{id}") 
+            .route(web::put().to(update_review)) 
+            .route(web::delete().to(delete_review))  
     )
     .service(
         web::resource("/reviews/event/{eventId}")
-            .route(web::get().to(get_reviews_by_event_id))
+            .route(web::get().to(get_reviews_by_event_id))  
     )
     .service(
         web::resource("/reviews/average/{eventId}")
-            .route(web::get().to(get_average_rating))
+            .route(web::get().to(get_average_rating)) 
     );
 }
