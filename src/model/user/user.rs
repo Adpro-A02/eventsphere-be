@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -11,6 +10,7 @@ pub enum UserRole {
     Attendee,
 }
 
+#[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
     pub name: String,

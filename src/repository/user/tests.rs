@@ -1,6 +1,5 @@
 use crate::model::user::{User, UserRole};
 use crate::repository::user::user_repo::{InMemoryUserPersistence, UserRepository, DbUserRepository};
-use uuid::Uuid;
 
 #[tokio::test]
 async fn test_create_user() {
