@@ -1,29 +1,31 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rocket::local::blocking::Client;
-    use rocket::http::Status;
-    use rocket::serde::json::{json, Value};
-    use rocket::routes;
+    use actix_web::{test, web, http::StatusCode, App};
     use std::sync::Arc;
+    use serde_json::json;
     use crate::model::event::event::{CreateEventDto, UpdateEventDto};
+    use serde_json::Value;
     use crate::service::event::event_service::{EventService, ServiceError};
     use crate::repository::event::EventRepository;
-    use crate::controller::event::event_controller::{EventServiceTrait, create_event,list_events,get_event};
+    use crate::controller::event::event_controller::{EventServiceTrait, configure_routes};
+    use actix_web::{
+        dev::{ServiceFactory, ServiceRequest, ServiceResponse},
+        Error,
+    };
     
-    // Dummy event service and repository to be used in the tests
     struct DummyEventService;
 
     impl EventServiceTrait for DummyEventService {
-        fn create_event(&self, dto: CreateEventDto) -> Result<Value, ServiceError> {
+        fn create_event(&self, dto: CreateEventDto) -> Result<serde_json::Value, ServiceError> {
             Ok(json!({"id": "1", "title": dto.title}))
         }
 
-        fn list_events(&self) -> Result<Value, ServiceError> {
+        fn list_events(&self) -> Result<serde_json::Value, ServiceError> {
             Ok(json!([{"id": "1", "title": "Test Event"}]))
         }
 
-        fn get_event(&self, event_id: &str) -> Result<Value, ServiceError> {
+        fn get_event(&self, event_id: &str) -> Result<serde_json::Value, ServiceError> {
             if event_id == "1" {
                 Ok(json!({"id": "1", "title": "Test Event"}))
             } else {
@@ -31,7 +33,7 @@ mod tests {
             }
         }
 
-        fn update_event(&self, _event_id: &str, _dto: UpdateEventDto) -> Result<Value, ServiceError> {
+        fn update_event(&self, _event_id: &str, _dto: UpdateEventDto) -> Result<serde_json::Value, ServiceError> {
             Ok(json!({"id": "1", "title": "Updated Event"}))
         }
 
@@ -39,26 +41,38 @@ mod tests {
             Ok(())
         }
 
-        fn publish_event(&self, _event_id: &str) -> Result<Value, ServiceError> {
+        fn publish_event(&self, _event_id: &str) -> Result<serde_json::Value, ServiceError> {
             Ok(json!({"id": "1", "status": "published"}))
         }
 
-        fn cancel_event(&self, _event_id: &str) -> Result<Value, ServiceError> {
+        fn cancel_event(&self, _event_id: &str) -> Result<serde_json::Value, ServiceError> {
             Ok(json!({"id": "1", "status": "cancelled"}))
         }
 
-        fn complete_event(&self, _event_id: &str) -> Result<Value, ServiceError> {
+        fn complete_event(&self, _event_id: &str) -> Result<serde_json::Value, ServiceError> {
             Ok(json!({"id": "1", "status": "completed"}))
         }
     }
 
-    #[test]
-    fn test_create_event() {
-        let rocket = rocket::build()
-            .manage(Arc::new(DummyEventService) as Arc<dyn EventServiceTrait + Send + Sync>)  // Use `.manage()` here
-            .mount("/api", routes![create_event]);
+    // Helper function untuk setup test app
+fn get_test_app() -> App<impl ServiceFactory<
+    ServiceRequest,
+    Config = (),
+    Response = ServiceResponse,
+    Error = Error,
+    InitError = (),
+>> {
+    let service = Arc::new(DummyEventService) as Arc<dyn EventServiceTrait + Send + Sync>;
+    
+    App::new()
+        .app_data(web::Data::new(service))
+        .configure(configure_routes)
+}
 
-        let client = Client::tracked(rocket).expect("valid rocket instance");
+    #[actix_web::test]
+    async fn test_create_event() {
+      
+        let app = test::init_service(get_test_app()).await;
 
         // Create event request
         let create_event_payload = json!({
@@ -67,46 +81,140 @@ mod tests {
             "location": "Fasilkom UI",
             "event_date": "2025-12-11T18:00:00",
             "base_price": 150.0
-          
         });
 
-        let response = client.post("/api/events")
-            .json(&create_event_payload)
-            .dispatch();
+        let req = test::TestRequest::post()
+            .uri("/api/events")
+            .set_json(&create_event_payload)
+            .to_request();
 
-        // Assert that the event is created and return status code 201
-        assert_eq!(response.status(), Status::Created);
+        // Kirim request dan dapatkan respons
+        let resp = test::call_service(&app, req).await;
+
+        // Assert status code adalah 201 Created
+        assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
-    #[test]
-    fn test_list_events() {
-        let rocket = rocket::build()
-            .manage(Arc::new(DummyEventService) as Arc<dyn EventServiceTrait + Send + Sync>)  // Use `.manage()` here
-            .mount("/api", routes![list_events]);
+    #[actix_web::test]
+    async fn test_list_events() {
+        
+        let app = test::init_service(get_test_app()).await;
 
-        let client = Client::tracked(rocket).expect("valid rocket instance");
+      
+        let req = test::TestRequest::get()
+            .uri("/api/events")
+            .to_request();
 
-        // List events request
-        let response = client.get("/api/events").dispatch();
+       
+        let resp = test::call_service(&app, req).await;
 
-        // Assert that the response status is OK
-        assert_eq!(response.status(), Status::Ok);
+      
+        assert_eq!(resp.status(), StatusCode::OK);
+        
+       
+        let body = test::read_body(resp).await;
+        let events: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(events.as_array().unwrap().len() > 0);
     }
 
-    #[test]
-    fn test_get_event() {
-        let rocket = rocket::build()
-            .manage(Arc::new(DummyEventService) as Arc<dyn EventServiceTrait + Send + Sync>)  // Use `.manage()` here
-            .mount("/api", routes![get_event]);
+    #[actix_web::test]
+    async fn test_get_event() {
+    
+        let app = test::init_service(get_test_app()).await;
 
-        let client = Client::tracked(rocket).expect("valid rocket instance");
+      
+        let req = test::TestRequest::get()
+            .uri("/api/events/1")
+            .to_request();
 
-        // Get event request with existing event ID
-        let response = client.get("/api/events/1").dispatch();
-        assert_eq!(response.status(), Status::Ok);
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
 
-        // Get event request with non-existing event ID
-        let response_not_found = client.get("/api/events/999").dispatch();
-        assert_eq!(response_not_found.status(), Status::NotFound);
+        // Get event request dengan ID event yang tidak ada
+        let req_not_found = test::TestRequest::get()
+            .uri("/api/events/999")
+            .to_request();
+
+        let resp_not_found = test::call_service(&app, req_not_found).await;
+        assert_eq!(resp_not_found.status(), StatusCode::NOT_FOUND);
+    }
+    
+    #[actix_web::test]
+    async fn test_update_event() {
+    
+        let app = test::init_service(get_test_app()).await;
+        
+        // Update event request 
+        let update_event_payload = json!({
+            "title": "Updated Tech Talk",
+            "description": "Updated description",
+        });
+        
+        let req = test::TestRequest::put()
+            .uri("/api/events/1")
+            .set_json(&update_event_payload)
+            .to_request();
+            
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    
+    #[actix_web::test]
+    async fn test_delete_event() {
+        let app = test::init_service(get_test_app()).await;
+    
+        let req = test::TestRequest::delete()
+            .uri("/api/events/1")
+            .to_request();
+    
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    
+        let body: Value = test::read_body_json(resp).await;
+    
+        assert_eq!(body["status"], "success");
+        assert_eq!(body["message"], "Event dengan ID 1 berhasil dihapus");
+    }
+    
+    #[actix_web::test]
+    async fn test_publish_event() {
+     
+        let app = test::init_service(get_test_app()).await;
+        
+      
+        let req = test::TestRequest::post()
+            .uri("/api/events/1/publish")
+            .to_request();
+            
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    
+    #[actix_web::test]
+    async fn test_cancel_event() {
+     
+        let app = test::init_service(get_test_app()).await;
+        
+      
+        let req = test::TestRequest::post()
+            .uri("/api/events/1/cancel")
+            .to_request();
+            
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    
+    #[actix_web::test]
+    async fn test_complete_event() {
+      
+        let app = test::init_service(get_test_app()).await;
+        
+      
+        let req = test::TestRequest::post()
+            .uri("/api/events/1/complete")
+            .to_request();
+            
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }
