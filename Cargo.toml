@@ -24,6 +24,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 redis = { version = "0.29.5", features = ["tokio-comp"], optional = true }
 tracing-appender = "0.2"
 warp = "0.3.7"
+actix-web = "4.10.2"
 
 [dev-dependencies]
 mockall = "0.13.1"
