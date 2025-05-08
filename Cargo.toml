@@ -26,6 +26,7 @@ tracing-appender = "0.2"
 jsonwebtokens = "1.2.0"
 jsonwebtoken = "9.3.1"
 warp = "0.3.7"
+anyhow = "1.0"
 
 [dev-dependencies]
 mockall = "0.13.1"

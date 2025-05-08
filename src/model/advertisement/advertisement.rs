@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Advertisement {
@@ -29,6 +29,16 @@ pub enum AdvertisementStatus {
     Inactive,
     #[serde(rename = "expired")]
     Expired,
+}
+
+impl fmt::Display for AdvertisementStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AdvertisementStatus::Active => write!(f, "active"),
+            AdvertisementStatus::Inactive => write!(f, "inactive"),
+            AdvertisementStatus::Expired => write!(f, "expired"),
+        }
+    }
 }
 
 impl From<String> for AdvertisementStatus {

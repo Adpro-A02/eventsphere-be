@@ -2,20 +2,21 @@ use async_trait::async_trait;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::error::Error as StdError;
 
 use crate::model::advertisement::advertisement::{Advertisement, AdvertisementStatus};
 
 #[async_trait]
 pub trait AdvertisementDisplayStrategy: Send + Sync {
-    async fn prepare_for_display(&self, advertisement: Advertisement) -> Advertisement;
+    async fn prepare_for_display(&self, advertisement: Advertisement) -> Result<Advertisement, Box<dyn StdError + Send + Sync>>;
 }
 
 pub struct DefaultDisplayStrategy;
 
 #[async_trait]
 impl AdvertisementDisplayStrategy for DefaultDisplayStrategy {
-    async fn prepare_for_display(&self, advertisement: Advertisement) -> Advertisement {
-        advertisement
+    async fn prepare_for_display(&self, advertisement: Advertisement) -> Result<Advertisement, Box<dyn StdError + Send + Sync>> {
+        Ok(advertisement)
     }
 }
 
@@ -23,14 +24,18 @@ pub struct ActiveOnlyDisplayStrategy;
 
 #[async_trait]
 impl AdvertisementDisplayStrategy for ActiveOnlyDisplayStrategy {
-    async fn prepare_for_display(&self, mut advertisement: Advertisement) -> Advertisement {
+    async fn prepare_for_display(&self, mut advertisement: Advertisement) -> Result<Advertisement, Box<dyn StdError + Send + Sync>> {
         // Check if ad is expired (end_date < now)
         let now = Utc::now();
-        if advertisement.end_date < now {
-            advertisement.status = AdvertisementStatus::Expired;
+        
+        // Properly handle the Option<DateTime> for end_date
+        if let Some(end_date) = advertisement.end_date {
+            if end_date < now {
+                advertisement.status = AdvertisementStatus::Expired;
+            }
         }
         
-        advertisement
+        Ok(advertisement)
     }
 }
 
