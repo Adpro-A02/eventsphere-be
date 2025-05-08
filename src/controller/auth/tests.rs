@@ -104,7 +104,7 @@ impl UserRepository for InMemoryUserRepo {
 
 fn setup_controller() -> Arc<AuthController> {
     let user_repo = Arc::new(InMemoryUserRepo::new());
-    let auth_service = Arc::new(AuthService::new("test_secret".to_string(), "test_pepper".to_string()));
+    let auth_service = Arc::new(AuthService::new("test_secret".to_string(), "test_refresh_secret".to_string(), "test_pepper".to_string()));
     Arc::new(AuthController::new(user_repo, auth_service))
 }
 

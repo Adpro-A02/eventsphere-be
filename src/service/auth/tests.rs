@@ -6,7 +6,7 @@ mod tests {
 
     #[test]
     fn test_hash_password() {
-        let auth_service = AuthService::new("test_secret".to_string(), "test_pepper".to_string());
+        let auth_service = AuthService::new("test_secret".to_string(), "test_refresh_secret".to_string(), "test_pepper".to_string());
         let password = "test_password";
 
         let hash = auth_service.hash_password(password).expect("Failed to hash password");
@@ -15,7 +15,7 @@ mod tests {
 
     #[test]
     fn test_verify_password() {
-        let auth_service = AuthService::new("test_secret".to_string(), "test_pepper".to_string());
+        let auth_service = AuthService::new("test_secret".to_string(), "test_refresh_secret".to_string(), "test_pepper".to_string());
         let password = "test_password";
 
         let hash = auth_service.hash_password(password).expect("Failed to hash password");
@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn test_generate_token() {
-        let auth_service = AuthService::new("test_secret".to_string(), "test_pepper".to_string());
+        let auth_service = AuthService::new("test_secret".to_string(), "test_refresh_secret".to_string(), "test_pepper".to_string());
         let user = User {
             id: Uuid::new_v4(),
             role: UserRole::Admin,
@@ -40,9 +40,10 @@ mod tests {
             last_login: None,
         };
 
-        let token = auth_service
+        let token_pair = auth_service
             .generate_token(&user)
             .expect("Failed to generate token");
+        let token = &token_pair.access_token;
 
         assert!(!token.is_empty(), "Token should not be empty");
     }
