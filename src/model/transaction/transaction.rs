@@ -11,6 +11,18 @@ pub enum TransactionStatus {
     Refunded,
 }
 
+impl TransactionStatus {
+    pub fn from_string(status: &str) -> Self {
+        match status {
+            "Pending" => TransactionStatus::Pending,
+            "Success" => TransactionStatus::Success,
+            "Failed" => TransactionStatus::Failed,
+            "Refunded" => TransactionStatus::Refunded,
+            _ => TransactionStatus::Pending, // Default case
+        }
+    }
+}
+
 impl fmt::Display for TransactionStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

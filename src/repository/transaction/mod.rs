@@ -4,6 +4,8 @@ pub use transaction_repo::{
     DbTransactionRepository,
     TransactionPersistenceStrategy,
     InMemoryTransactionPersistence,
+    AsyncTransactionPersistenceStrategy,
+    PostgresTransactionPersistence,
 };
 
 pub mod balance_repo;
@@ -12,6 +14,7 @@ pub use balance_repo::{
     DbBalanceRepository,
     BalancePersistenceStrategy,
     InMemoryBalancePersistence,
+    AsyncBalancePersistenceStrategy,
 };
 
 #[cfg(test)]
