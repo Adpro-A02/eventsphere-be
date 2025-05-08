@@ -5,12 +5,14 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{EncodingKey, Header, encode, decode, DecodingKey, Validation};
+use rocket::fairing::Result;
 use serde::{Serialize, Deserialize};
 use std::error::Error;
 use uuid::Uuid;
 
 pub struct AuthService {
     jwt_secret: String,
+    jwt_refresh_secret: String,
     pepper: String,
 }
 
@@ -21,9 +23,23 @@ struct Claims {
     exp: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct RefreshClaims {
+    sub: String,
+    jti: String,
+    exp: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenPair {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: i64,
+}
+
 impl AuthService {
-    pub fn new(jwt_secret: String, pepper: String) -> Self {
-        Self { jwt_secret, pepper }
+    pub fn new(jwt_secret: String, jwt_refresh_secret: String, pepper: String) -> Self {
+        Self { jwt_secret, jwt_refresh_secret, pepper }
     }
 
     pub fn hash_password(&self, password: &str) -> Result<String, Box<dyn Error>> {
@@ -41,7 +57,8 @@ impl AuthService {
         Ok(argon2.verify_password(password_with_pepper.as_bytes(), &parsed_hash).is_ok())
     }
 
-    pub fn generate_token(&self, user: &User) -> Result<String, Box<dyn Error>> {
+    pub fn generate_token(&self, user: &User) -> Result<TokenPair, Box<dyn Error>> {
+        // Access Token
         let expiration = Utc::now()
             .checked_add_signed(Duration::hours(24))
             .expect("valid timestamp")
@@ -59,7 +76,29 @@ impl AuthService {
             &EncodingKey::from_secret(self.jwt_secret.as_bytes())
         )?;
 
-        Ok(token)
+        // Refresh Token
+        let refresh_exp = Utc::now()
+            .checked_add_signed(Duration::days(7))
+            .expect("valid timestamp")
+            .timestamp();
+
+        let refresh_claims = RefreshClaims {
+            sub: user.id.to_string(),
+            jti: Uuid::new_v4().to_string(),
+            exp: refresh_exp,
+        };
+
+        let refresh_token = encode(
+            &Header::default(),
+            &refresh_claims,
+            &EncodingKey::from_secret(self.jwt_refresh_secret.as_bytes())
+        )?;
+
+        Ok(TokenPair {
+            access_token: token,
+            refresh_token,
+            expires_in: expiration,
+        })
     }
 
     pub fn verify_token(&self, token: &str) -> Result<Uuid, Box<dyn Error>> {
@@ -68,5 +107,23 @@ impl AuthService {
         let token_data = decode::<Claims>(token, &decoding_key, &validation)?;
         let user_id = Uuid::parse_str(&token_data.claims.sub)?;
         Ok(user_id)
+    }
+
+    pub fn refresh_access_token(&self, token: &str) -> Result<TokenPair, Box<dyn Error>> {
+        let decoding_key = DecodingKey::from_secret(self.jwt_refresh_secret.as_bytes());
+        let validation = Validation::default();
+        let token_data = decode::<RefreshClaims>(token, &decoding_key, &validation)?;
+        let user_id = Uuid::parse_str(&token_data.claims.sub)?;
+        let user = User {
+            id: user_id,
+            name: String::new(),
+            email: String::new(),
+            password: String::new(),
+            role: crate::model::user::UserRole::Attendee, // TODO: Placeholder role
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            last_login: None,
+        };
+        self.generate_token(&user)
     }
 }

@@ -4,7 +4,6 @@ use std::error::Error;
 use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use chrono::Utc;
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {

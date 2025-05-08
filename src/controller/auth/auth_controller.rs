@@ -1,12 +1,11 @@
 use crate::model::user::{User, UserRole};
 use crate::repository::user::user_repo::UserRepository;
-use crate::service::auth::auth_service::AuthService;
+use crate::service::auth::auth_service::{AuthService, TokenPair};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
 use warp::{Filter, Rejection, Reply};
-use chrono::Utc;
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
@@ -29,6 +28,11 @@ pub struct AuthResponse {
     pub name: String,
     pub email: String,
     pub role: UserRole,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RefreshTokenRequest {
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,7 +126,8 @@ impl AuthController {
 
         self.user_repository.create(&user).await?;
 
-        let token = self.auth_service.generate_token(&user)?;
+        let token_pair = self.auth_service.generate_token(&user)?;
+        let token = token_pair.access_token;
 
         Ok(AuthResponse {
             token,
@@ -147,7 +152,8 @@ impl AuthController {
         updated_user.update_last_login();
         self.user_repository.update(&updated_user).await?;
 
-        let token = self.auth_service.generate_token(&updated_user)?;
+        let token_pair = self.auth_service.generate_token(&updated_user)?;
+        let token = token_pair.access_token;
 
         Ok(AuthResponse {
             token,
@@ -233,6 +239,13 @@ impl AuthController {
         Ok(())
     }
 
+    pub async fn refresh_token(
+        &self,
+        refresh_token: String,
+    ) -> Result<TokenPair, Box<dyn Error>> {
+        self.auth_service.refresh_access_token(&refresh_token)
+    }
+
     pub fn routes(controller: Arc<AuthController>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
         let register = warp::path!("auth" / "register")
             .and(warp::post())
@@ -266,11 +279,18 @@ impl AuthController {
             .and(with_auth_controller(controller.clone()))
             .and_then(Self::change_password_handler);
 
+        let refresh_token = warp::path!("auth" / "refresh")
+            .and(warp::post())
+            .and(warp::body::json())
+            .and(with_auth_controller(controller.clone()))
+            .and_then(Self::refresh_token_handler);
+
         register
             .or(login)
             .or(get_user)
             .or(update_profile)
             .or(change_password)
+            .or(refresh_token)
     }
 
     fn handle_result<T: Serialize>(result: Result<T, Box<dyn Error>>) -> Result<impl Reply, Rejection> {
@@ -318,6 +338,13 @@ impl AuthController {
     ) -> Result<impl Reply, Rejection> {
         let user_id = Self::extract_user_id_from_token(auth_header, &controller)?;
         Self::handle_result(controller.change_password(user_id, req.old_password, req.new_password).await)
+    }
+
+    async fn refresh_token_handler(
+        req: RefreshTokenRequest,
+        controller: Arc<AuthController>,
+    ) -> Result<impl Reply, Rejection> {
+        Self::handle_result(controller.refresh_token(req.refresh_token).await)
     }
 
     fn extract_user_id_from_token(
