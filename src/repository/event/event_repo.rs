@@ -1,16 +1,10 @@
-
-use crate::model::event::Event;
- // Import the EventRepository trait
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
+use crate::model::event::Event;
 
-
-
-// Ensure the EventRepository trait is defined if not already present
-pub trait EventRepository {
+pub trait EventRepository: Send + Sync + 'static {
     fn add(&self, event: Event) -> Result<Event, String>;
     fn delete(&self, event_id: Uuid) -> Result<(), String>;
     fn update_event(&self, event_id: Uuid, updated_event: Event) -> Result<Event, String>;
@@ -18,59 +12,56 @@ pub trait EventRepository {
     fn get_by_id(&self, event_id: Uuid) -> Result<Option<Event>, String>;
 }
 
-pub struct InMemoryEventRepo {
-    pub events: Arc<Mutex<HashMap<String, Event>>>,
+// In-memory implementation of EventRepository
+pub struct InMemoryEventRepository {
+    events: Mutex<HashMap<Uuid, Event>>,
 }
 
-impl InMemoryEventRepo {
+impl InMemoryEventRepository {
     pub fn new() -> Self {
-        Self {
-            events: Arc::new(Mutex::new(HashMap::new())),
+        InMemoryEventRepository {
+            events: Mutex::new(HashMap::new()),
         }
     }
-    
 }
 
-impl EventRepository for InMemoryEventRepo {
+impl EventRepository for InMemoryEventRepository {
     fn add(&self, event: Event) -> Result<Event, String> {
-        let mut events = self.events.lock().map_err(|_| "Lock poisoned".to_string())?;
-        let id_str = event.id.to_string();
-        if events.contains_key(&id_str) {
-            return Err("Event already exists".to_string());
-        }
-        events.insert(id_str, event.clone());
-        Ok(event)
+        let mut events = self.events.lock().map_err(|e| e.to_string())?;
+        let event_clone = event.clone();
+        events.insert(event.id, event);
+        Ok(event_clone)
     }
+
     fn delete(&self, event_id: Uuid) -> Result<(), String> {
-        let mut events = self.events.lock().map_err(|_| "Lock poisoned".to_string())?;
-        let id_str = event_id.to_string();
-        if events.remove(&id_str).is_some() {
-            Ok(())
-        } else {
-            Err("Event not found".to_string())
+        let mut events = self.events.lock().map_err(|e| e.to_string())?;
+        
+        if events.remove(&event_id).is_none() {
+            return Err(format!("Event with ID {} not found", event_id));
         }
+        
+        Ok(())
     }
+
     fn update_event(&self, event_id: Uuid, updated_event: Event) -> Result<Event, String> {
-        let mut events = self.events.lock().map_err(|_| "Lock poisoned".to_string())?;
-        let id_str = event_id.to_string();
-        if events.contains_key(&id_str) {
-            events.insert(id_str, updated_event.clone());
-            Ok(updated_event)
-        } else {
-            Err("Event not found".to_string())
+        let mut events = self.events.lock().map_err(|e| e.to_string())?;
+        
+        if !events.contains_key(&event_id) {
+            return Err(format!("Event with ID {} not found", event_id));
         }
+        
+        let event_clone = updated_event.clone();
+        events.insert(event_id, updated_event);
+        Ok(event_clone)
     }
+
     fn list_events(&self) -> Result<Vec<Event>, String> {
-        let events = self.events.lock().map_err(|_| "Lock poisoned".to_string())?;
+        let events = self.events.lock().map_err(|e| e.to_string())?;
         Ok(events.values().cloned().collect())
     }
 
     fn get_by_id(&self, event_id: Uuid) -> Result<Option<Event>, String> {
-        let events = self.events.lock().map_err(|_| "Lock poisoned".to_string())?;
-        Ok(events.get(&event_id.to_string()).cloned())
+        let events = self.events.lock().map_err(|e| e.to_string())?;
+        Ok(events.get(&event_id).cloned())
     }
-   
 }
-
-
-
