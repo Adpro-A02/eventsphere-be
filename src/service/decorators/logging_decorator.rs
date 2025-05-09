@@ -1,7 +1,7 @@
 use std::time::Instant;
 use uuid::Uuid;
-use crate::model::tiket::ticket::Ticket;
-use crate::service::tiket::ticket_service::TicketService;
+use crate::model::ticket::ticket::Ticket;
+use crate::service::ticket::ticket_service::TicketService;
 
 // Define a trait that both the decorator and real service will implement
 pub trait TicketServiceTrait {
