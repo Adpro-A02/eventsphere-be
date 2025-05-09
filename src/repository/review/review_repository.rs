@@ -1,49 +1,79 @@
-pub struct ReviewRepository {
-    reviews: HashMap<Uuid, Review>,
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
+
+use crate::model::review::{Review, ReviewStatus};
+
+pub trait ReviewRepository: Send + Sync + 'static {
+    fn add(&self, review: Review) -> Result<Review, String>;
+    fn delete(&self, review_id: Uuid) -> Result<(), String>;
+    fn update_review(&self, review_id: Uuid, updated_review: Review) -> Result<Review, String>;
+    fn list_reviews(&self) -> Result<Vec<Review>, String>;
+    fn get_by_id(&self, review_id: Uuid) -> Result<Option<Review>, String>;
+    fn get_by_event_id(&self, event_id: Uuid) -> Result<Vec<Review>, String>;
 }
 
-impl ReviewRepository {
+// In-memory implementation of ReviewRepository
+pub struct InMemoryReviewRepository {
+    reviews: Mutex<HashMap<Uuid, Review>>,
+}
+
+impl InMemoryReviewRepository {
     pub fn new() -> Self {
-        ReviewRepository {
-            reviews: HashMap::new(),
+        InMemoryReviewRepository {
+            reviews: Mutex::new(HashMap::new()),
         }
     }
+}
 
-    pub fn find_by_id(&self, id: &Uuid) -> Option<&Review> {
-        self.reviews.get(id)
+impl ReviewRepository for InMemoryReviewRepository {
+    fn add(&self, review: Review) -> Result<Review, String> {
+        let mut reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        let review_clone = review.clone();
+        reviews.insert(review.review_id, review);
+        Ok(review_clone)
     }
 
-    pub fn find_all(&self) -> Vec<&Review> {
-        self.reviews.values().collect()
+    fn delete(&self, review_id: Uuid) -> Result<(), String> {
+        let mut reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        
+        if reviews.remove(&review_id).is_none() {
+            return Err(format!("Review with ID {} not found", review_id));
+        }
+        
+        Ok(())
     }
 
-    pub fn save(&mut self, review: Review) -> &Review {
-        self.reviews.insert(review.id, review);
-        self.reviews.get(&review.id).unwrap()
+    fn update_review(&self, review_id: Uuid, updated_review: Review) -> Result<Review, String> {
+        let mut reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        
+        if !reviews.contains_key(&review_id) {
+            return Err(format!("Review with ID {} not found", review_id));
+        }
+        
+        let review_clone = updated_review.clone();
+        reviews.insert(review_id, updated_review);
+        Ok(review_clone)
     }
 
-    pub fn delete(&mut self, id: &Uuid) {
-        self.reviews.remove(id);
+    fn list_reviews(&self) -> Result<Vec<Review>, String> {
+        let reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        Ok(reviews.values().cloned().collect())
     }
 
-    pub fn find_all_active_reviews(&self) -> Vec<&Review> {
-        self.reviews
-            .values()
-            .filter(|review| review.status == ReviewStatus::Approved)
-            .collect()
+    fn get_by_id(&self, review_id: Uuid) -> Result<Option<Review>, String> {
+        let reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        Ok(reviews.get(&review_id).cloned())
     }
 
-    pub fn average_rating_for_event(&self, event_id: &Uuid) -> f64 {
-        let event_reviews: Vec<&Review> = self.reviews
-            .values()
-            .filter(|r| &r.event_id == event_id)
+    fn get_by_event_id(&self, event_id: Uuid) -> Result<Vec<Review>, String> {
+        let reviews = self.reviews.lock().map_err(|e| e.to_string())?;
+        let filtered_reviews: Vec<Review> = reviews.values()
+            .filter(|&review| review.event_id == event_id)
+            .cloned()
             .collect();
-
-        if event_reviews.is_empty() {
-            return 0.0; 
-        }
-
-        let total_rating: i32 = event_reviews.iter().map(|r| r.rating).sum();
-        total_rating as f64 / event_reviews.len() as f64
+        Ok(filtered_reviews)
     }
+
+    
 }

@@ -1,2 +1,2 @@
-pub mod review;   
-pub mod tests;     
+pub mod review;
+pub use review::{Review, ReviewStatus};
