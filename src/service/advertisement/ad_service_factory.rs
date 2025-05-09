@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::dto::advertisement::advertisement::{
     AdvertisementQueryParams, AdvertisementResponse, AdvertisementDetailResponse, 
-    AdvertisementListResponse, CreateAdvertisementRequest, CreateAdvertisementResponse
+    AdvertisementListResponse, CreateAdvertisementRequest, CreateAdvertisementResponse,
+    UpdateAdvertisementRequest, UpdateAdvertisementResponse, PaginationData
 };
 use crate::model::advertisement::advertisement::{Advertisement, AdvertisementStatus};
 use crate::repository::advertisement::ad_repository::AdvertisementRepository;
