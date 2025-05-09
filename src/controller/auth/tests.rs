@@ -427,7 +427,6 @@ async fn test_refresh_token_route() {
         .mount("/", AuthController::routes());
     let client = Client::tracked(rocket).await.expect("valid rocket instance");
 
-    // First register a user
     let register_json = r#"{
         "name":"Refresh Token Test",
         "email":"refresh_test@example.com",
@@ -442,16 +441,18 @@ async fn test_refresh_token_route() {
         .dispatch()
         .await;
 
-    // Extract refresh token from response
+    assert_eq!(response.status(), Status::Ok);
+    
     let body = response.into_string().await.unwrap();
-    let refresh_token_start = body.find(r#""refresh_token":""#).unwrap() + 16;
-    let refresh_token_end = body[refresh_token_start..].find(r#"""#).unwrap() + refresh_token_start;
-    let refresh_token = &body[refresh_token_start..refresh_token_end];
-
-    // Test refresh token endpoint
-    let refresh_json = format!(r#"{{
-        "refresh_token":"{}"
-    }}"#, refresh_token);
+    
+    let response_json: serde_json::Value = serde_json::from_str(&body).expect("Invalid JSON response");
+    
+    // Extract the refresh token using proper JSON path
+    let refresh_token = response_json["data"]["refresh_token"]
+        .as_str()
+        .expect("Refresh token not found in response");
+    
+    let refresh_json = format!(r#"{{"refresh_token":"{}"}}"#, refresh_token);
     
     let response = client
         .post("/auth/refresh")
@@ -464,8 +465,7 @@ async fn test_refresh_token_route() {
     
     let body = response.into_string().await.unwrap();
     assert!(body.contains("success"));
-    // Accept either access_token or token for compatibility
-    assert!(body.contains("access_token") || body.contains("token"), "Response body: {}", body);
+    assert!(body.contains("access_token"), "Response body should contain access_token: {}", body);
     assert!(body.contains("refresh_token"));
 }
 
