@@ -53,10 +53,10 @@ async fn create_review<R: ReviewRepository>(
     body: web::Json<CreateReviewDto>,
 ) -> impl Responder {
     match service.create_review(
-        body.event_id,                // event_id is Copy, so no need to move
-        body.user_id,                 // user_id is Copy, so no need to move
-        body.rating,                  // rating is Copy, so no need to move
-        body.comment.clone()          // clone the comment (String)
+        body.event_id,                
+        body.user_id,               
+        body.rating,               
+        body.comment.clone()         
     ) {
         Ok(review) => {
             let id = review.review_id.to_string();
@@ -70,7 +70,6 @@ async fn create_review<R: ReviewRepository>(
     }
 }
 
-// List all reviews for an event
 async fn list_reviews_by_event<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -82,7 +81,6 @@ async fn list_reviews_by_event<R: ReviewRepository>(
     }
 }
 
-// Get a specific review
 async fn get_review<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -94,7 +92,6 @@ async fn get_review<R: ReviewRepository>(
     }
 }
 
-// Update a review
 async fn update_review<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -107,7 +104,6 @@ async fn update_review<R: ReviewRepository>(
     }
 }
 
-// Delete a review
 async fn delete_review<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -122,7 +118,6 @@ async fn delete_review<R: ReviewRepository>(
     }
 }
 
-// Approve a review
 async fn approve_review<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -134,7 +129,6 @@ async fn approve_review<R: ReviewRepository>(
     }
 }
 
-// Reject a review
 async fn reject_review<R: ReviewRepository>(
     service: web::Data<ReviewServiceArc<R>>,
     path: web::Path<Uuid>,
@@ -146,7 +140,6 @@ async fn reject_review<R: ReviewRepository>(
     }
 }
 
-// Function to configure and register all routes
 pub fn configure_routes<R: ReviewRepository>(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
