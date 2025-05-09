@@ -27,7 +27,6 @@ jsonwebtokens = "1.2.0"
 jsonwebtoken = "9.3.1"
 warp = "0.3.7"
 anyhow = "1.0"
-url = "2.3"
 image = "0.25"
 
 [dev-dependencies]
