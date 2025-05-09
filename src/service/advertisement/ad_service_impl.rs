@@ -143,5 +143,35 @@ where
         Ok(self.to_create_response(&created))
     }
 
+    async fn update_advertisement(&self, id: &str, request: UpdateAdvertisementRequest, image_data: Option<Vec<u8>>) 
+        -> ServiceResult<UpdateAdvertisementResponse> {
+        // Check if the advertisement exists
+        let mut advertisement = self.repository.find_by_id(id).await
+            .map_err(map_error)?
+            .ok_or_else(|| map_error(format!("Advertisement with ID {} not found", id)))?;
+        
+        // Update fields
+        advertisement.title = request.title;
+        advertisement.description = request.description.unwrap_or_default();
+        advertisement.start_date = request.start_date;
+        advertisement.end_date = Some(request.end_date);
+        advertisement.click_url = request.click_url;
+        advertisement.position = request.position;
+        advertisement.updated_at = chrono::Utc::now();
+        
+        // Update image if provided
+        if let Some(image_data) = image_data {
+            let image_url = self.upload_image(image_data).await
+                .map_err(|e| map_error(format!("Failed to upload image: {}", e)))?;
+            advertisement.image_url = image_url;
+        }
+        
+        // Update in repository
+        let updated = self.repository.update(&advertisement).await
+            .map_err(map_error)?;
+        
+        Ok(self.to_update_response(&updated))
+    }
+
     
 }
