@@ -141,3 +141,26 @@ pub struct CreateAdvertisementResponse {
     pub position: String,
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateAdvertisementRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub click_url: String,
+    pub position: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateAdvertisementResponse {
+    pub id: String,
+    pub title: String,
+    pub image_url: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub status: String,
+    pub click_url: String,
+    pub position: String,
+    pub updated_at: DateTime<Utc>,
+}
