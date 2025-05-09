@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::error::Error as StdError;
 
 use crate::dto::advertisement::advertisement::{
-    AdvertisementQueryParams, AdvertisementResponse, AdvertisementDetailResponse, 
+    AdvertisementQueryParams, AdvertisementDetailResponse, 
     AdvertisementListResponse, CreateAdvertisementRequest, CreateAdvertisementResponse,
     PaginationData
 };
