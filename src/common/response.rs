@@ -53,6 +53,16 @@ impl<T: Serialize> ApiResponse<T> {
             errors: None,
         })
     }
+
+    pub fn not_found_with_data(message: &str, data: T) -> ApiResponse<T> {
+        Self {
+            code: 404,
+            success: false,
+            message: message.to_string(),
+            data: Some(data),
+            errors: None,
+        }
+    }
     
     /// Create a server error response
     pub fn server_error(message: &str) -> Json<ApiResponse<T>> {
