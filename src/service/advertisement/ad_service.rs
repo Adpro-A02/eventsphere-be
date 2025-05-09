@@ -50,4 +50,7 @@ pub trait AdvertisementService: Send + Sync {
     /// Create a new advertisement with image data
     async fn create_advertisement(&self, request: CreateAdvertisementRequest, image_data: Vec<u8>) 
         -> ServiceResult<CreateAdvertisementResponse>;
-}
+
+    async fn update_advertisement(&self, id: &str, request: UpdateAdvertisementRequest, image_data: Option<Vec<u8>>) 
+    -> ServiceResult<UpdateAdvertisementResponse>;
+    }
