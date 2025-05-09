@@ -129,7 +129,7 @@ pub struct CreateAdvertisementResponse {
     pub title: String,
     pub image_url: String,
     pub start_date: DateTime<Utc>,
-    pub end_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
     pub status: String,
     pub click_url: String,
     pub position: String,
