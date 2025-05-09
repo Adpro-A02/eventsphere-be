@@ -65,6 +65,20 @@ pub fn new_advertisement_service(repository: Arc<dyn AdvertisementRepository + S
                 created_at: ad.created_at,
             }
         }
+
+        fn to_update_response(&self, ad: &Advertisement) -> UpdateAdvertisementResponse {
+            UpdateAdvertisementResponse {
+                id: ad.id.clone(),
+                title: ad.title.clone(),
+                image_url: ad.image_url.clone(),
+                start_date: ad.start_date,
+                end_date: ad.end_date,
+                status: status_to_string(&ad.status),
+                click_url: ad.click_url.clone(),
+                position: ad.position.clone(),
+                updated_at: ad.updated_at,
+            }
+        }
     }
     
     impl AdvertisementConverter for DynamicService {}
@@ -130,6 +144,52 @@ pub fn new_advertisement_service(repository: Arc<dyn AdvertisementRepository + S
             
             // Map to response
             Ok(self.to_create_response(&created))
+        }
+
+        async fn update_advertisement(&self, id: &str, request: UpdateAdvertisementRequest, image_data: Option<Vec<u8>>) 
+            -> ServiceResult<UpdateAdvertisementResponse> {
+            // Check if the advertisement exists
+            let mut advertisement = self.repo.find_by_id(id).await
+                .map_err(map_error)?
+                .ok_or_else(|| map_error(format!("Advertisement with ID {} not found", id)))?;
+            
+            // Update fields
+            advertisement.title = request.title;
+            advertisement.description = request.description.unwrap_or_default();
+            advertisement.start_date = request.start_date;
+            advertisement.end_date = Some(request.end_date);
+            advertisement.click_url = request.click_url;
+            advertisement.position = request.position;
+            advertisement.updated_at = chrono::Utc::now();
+            
+            // Update image if provided
+            if let Some(image_data) = image_data {
+                // Upload image code
+                let filename = format!("ad_{}.jpg", Uuid::new_v4());
+                let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string());
+                
+                // Create directory if it doesn't exist
+                std::fs::create_dir_all(&upload_dir)
+                    .map_err(|e| map_error(format!("Failed to create upload directory: {}", e)))?;
+                
+                // Save file to disk
+                let file_path = format!("{}/{}", upload_dir, filename);
+                std::fs::write(&file_path, &image_data)
+                    .map_err(|e| map_error(format!("Failed to write image file: {}", e)))?;
+                
+                // Get base URL from environment
+                let base_url = std::env::var("MEDIA_BASE_URL").unwrap_or_else(|_| "http://localhost:8000/media".to_string());
+                let image_url = format!("{}/{}", base_url, filename);
+                
+                advertisement.image_url = image_url;
+            }
+            
+            // Update in repository
+            let updated = self.repo.update(&advertisement).await
+                .map_err(map_error)?;
+            
+            // Map to response
+            Ok(self.to_update_response(&updated))
         }
     }
     
