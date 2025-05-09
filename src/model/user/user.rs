@@ -2,12 +2,38 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UserRole {
     Admin,
     Organizer,
     Attendee,
+}
+
+impl fmt::Display for UserRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            UserRole::Admin => "Admin",
+            UserRole::Organizer => "Organizer",
+            UserRole::Attendee => "Attendee",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for UserRole {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Admin" | "admin" => Ok(UserRole::Admin),
+            "Organizer" | "organizer" => Ok(UserRole::Organizer),
+            "Attendee" | "attendee" => Ok(UserRole::Attendee),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
