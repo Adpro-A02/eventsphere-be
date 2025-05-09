@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use crate::repository::tiket::TicketRepository;
+use crate::repository::ticket::TicketRepository;
 use crate::config::DatabaseConfig;
 
 pub enum DatabaseType {
