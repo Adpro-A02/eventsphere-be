@@ -111,12 +111,18 @@ impl From<crate::model::advertisement::Advertisement> for AdvertisementDetailRes
     }
 }
 
+// Validation error structure for form validation errors
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidationError {
+    pub field: String,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateAdvertisementRequest {
     pub title: String,
     pub description: Option<String>,
     #[serde(skip)]
-    pub image: Option<Vec<u8>>, 
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
     pub click_url: String,

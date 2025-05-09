@@ -1,7 +1,12 @@
 use rocket::serde::json::Json;
 use serde::Serialize;
 
-use crate::error::ValidationError;
+/// Validation error structure for form validation errors
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidationError {
+    pub field: String,
+    pub message: String,
+}
 
 /// Standard API response wrapper
 #[derive(Serialize)]
@@ -28,20 +33,42 @@ impl<T: Serialize> ApiResponse<T> {
     }
     
     /// Create a response for created resources
-    pub fn created(message: &str, data: T) -> Json<Self> {
-        Json(Self {
+    pub fn created(message: &str, data: T) -> Self {
+        Self {
             code: 201,
             success: true,
             message: message.to_string(),
             data: Some(data),
             errors: None,
+        }
+    }
+    
+    /// Create a not found error response
+    pub fn not_found(message: &str) -> Json<ApiResponse<T>> {
+        Json(Self {
+            code: 404,
+            success: false,
+            message: message.to_string(),
+            data: None,
+            errors: None,
         })
     }
     
-    /// Create an error response
-    pub fn error(code: u16, message: &str) -> Json<Self> {
+    /// Create a server error response
+    pub fn server_error(message: &str) -> Json<ApiResponse<T>> {
         Json(Self {
-            code,
+            code: 500,
+            success: false,
+            message: message.to_string(),
+            data: None,
+            errors: None,
+        })
+    }
+    
+    /// Create a forbidden error response
+    pub fn forbidden(message: &str) -> Json<ApiResponse<T>> {
+        Json(Self {
+            code: 403,
             success: false,
             message: message.to_string(),
             data: None,
@@ -50,14 +77,36 @@ impl<T: Serialize> ApiResponse<T> {
     }
     
     /// Create a validation error response
-    pub fn validation_error(message: &str, errors: Vec<ValidationError>) -> Json<Self> {
-        Json(Self {
+    pub fn validation_error(message: &str, errors: Vec<ValidationError>) -> ApiResponse<Vec<ValidationError>> {
+        ApiResponse {
             code: 400,
             success: false,
             message: message.to_string(),
             data: None,
             errors: Some(errors),
-        })
+        }
+    }
+    
+    /// Create a server error response with data
+    pub fn server_error_with_data(message: &str, data: T) -> ApiResponse<T> {
+        Self {
+            code: 500,
+            success: false,
+            message: message.to_string(),
+            data: Some(data),
+            errors: None,
+        }
+    }
+    
+    /// Create a forbidden error response with data
+    pub fn forbidden_with_data(message: &str, data: T) -> ApiResponse<T> {
+        Self {
+            code: 403,
+            success: false,
+            message: message.to_string(),
+            data: Some(data),
+            errors: None,
+        }
     }
 }
 
