@@ -110,3 +110,28 @@ impl From<crate::model::advertisement::Advertisement> for AdvertisementDetailRes
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateAdvertisementRequest {
+    pub title: String,
+    pub description: Option<String>,
+    #[serde(skip)]
+    pub image: Option<Vec<u8>>, 
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub click_url: String,
+    pub position: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateAdvertisementResponse {
+    pub id: String,
+    pub title: String,
+    pub image_url: String,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub status: String,
+    pub click_url: String,
+    pub position: String,
+    pub created_at: DateTime<Utc>,
+}
