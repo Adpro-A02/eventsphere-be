@@ -1,9 +1,10 @@
-use uuid::Uuid;
 use chrono::{NaiveDateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Review {
-    pub id: Uuid,
+    pub review_id: Uuid,
     pub event_id: Uuid,
     pub user_id: Uuid,
     pub rating: i32,
@@ -13,7 +14,7 @@ pub struct Review {
     pub status: ReviewStatus,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ReviewStatus {
     Pending,
     Approved,
@@ -24,7 +25,7 @@ impl Review {
     pub fn new(event_id: Uuid, user_id: Uuid, rating: i32, comment: String) -> Self {
         let now = Utc::now().naive_utc();
         Review {
-            id: Uuid::new_v4(),
+            review_id: Uuid::new_v4(),
             event_id,
             user_id,
             rating,

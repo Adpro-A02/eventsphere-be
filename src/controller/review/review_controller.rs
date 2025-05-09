@@ -1,73 +1,176 @@
 use actix_web::{web, HttpResponse, Responder};
-use crate::models::review::{Review, ReviewStatus};
-use crate::models::review_service::ReviewService;
-use crate::models::review_repository::ReviewRepository;
 use uuid::Uuid;
+use crate::model::review::{Review, ReviewStatus};
+use crate::service::review::review_service::{ReviewService, ServiceError};
+use crate::repository::review::review_repository::ReviewRepository;
+use crate::service::review::notification_service::NotificationService;
+use std::sync::Arc;
+use serde::{Deserialize};
 
-pub async fn create_review(
-    review_data: web::Json<Review>,
-    service: web::Data<ReviewService>
-) -> impl Responder {
-    let review = review_data.into_inner();
-    let created_review = service.create_review(review);
-    HttpResponse::Created().json(created_review)
+// Define DTOs for creating and updating reviews
+#[derive(Deserialize)]
+pub struct CreateReviewDto {
+    pub event_id: Uuid,
+    pub user_id: Uuid,
+    pub rating: i32,
+    pub comment: String,
 }
 
-pub async fn update_review(
-    review_id: web::Path<Uuid>,
-    review_data: web::Json<Review>,
-    service: web::Data<ReviewService>
-) -> impl Responder {
-    let review_id = review_id.into_inner();
-    let mut review = review_data.into_inner();
-    review.id = review_id;
-    let updated_review = service.update_review(review);
-    HttpResponse::Ok().json(updated_review)
+#[derive(Deserialize)]
+pub struct UpdateReviewDto {
+    pub rating: i32,
+    pub comment: String,
 }
 
-pub async fn delete_review(
-    review_id: web::Path<Uuid>,
-    service: web::Data<ReviewService>
-) -> impl Responder {
-    service.delete_review(&review_id);
-    HttpResponse::NoContent().finish()
+// Directly use the concrete type (no more trait or dynamic dispatch)
+pub type ReviewServiceArc<R> = Arc<ReviewService<R>>;
+
+// Helper function to map service errors to Actix responses
+fn map_error_to_response(error: ServiceError) -> HttpResponse {
+    match error {
+        ServiceError::NotFound(msg) => HttpResponse::NotFound().json(serde_json::json!( {
+            "status": "error",
+            "message": msg
+        })),
+        ServiceError::InvalidInput(msg) => HttpResponse::BadRequest().json(serde_json::json!( {
+            "status": "error",
+            "message": msg
+        })),
+        ServiceError::RepositoryError(msg) => HttpResponse::InternalServerError().json(serde_json::json!( {
+            "status": "error",
+            "message": format!("Database error: {}", msg)
+        })),
+        ServiceError::InternalError(msg) => HttpResponse::InternalServerError().json(serde_json::json!( {
+            "status": "error",
+            "message": format!("Internal server error: {}", msg)
+        })),
+    }
 }
 
-pub async fn get_reviews_by_event_id(
-    event_id: web::Path<Uuid>,
-    service: web::Data<ReviewService>
+// Create a new review
+async fn create_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    body: web::Json<CreateReviewDto>,
 ) -> impl Responder {
-    let reviews = service.repository.find_all()
-        .into_iter()
-        .filter(|r| r.event_id == *event_id)
-        .collect::<Vec<_>>();
-    HttpResponse::Ok().json(reviews)
+    match service.create_review(
+        body.event_id,                // event_id is Copy, so no need to move
+        body.user_id,                 // user_id is Copy, so no need to move
+        body.rating,                  // rating is Copy, so no need to move
+        body.comment.clone()          // clone the comment (String)
+    ) {
+        Ok(review) => {
+            let id = review.review_id.to_string();
+            let location = format!("/api/reviews/{}", id);
+
+            HttpResponse::Created()
+                .insert_header(("Location", location))
+                .json(review)
+        },
+        Err(e) => map_error_to_response(e),
+    }
 }
 
-pub async fn get_average_rating(
-    event_id: web::Path<Uuid>,
-    service: web::Data<ReviewService>
+// List all reviews for an event
+async fn list_reviews_by_event<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
 ) -> impl Responder {
-    let avg_rating = service.calculate_event_average_rating(&event_id);
-    HttpResponse::Ok().json(avg_rating)
+    let event_id = path.into_inner();
+    match service.list_reviews_by_event(event_id) {
+        Ok(reviews) => HttpResponse::Ok().json(reviews),
+        Err(e) => map_error_to_response(e),
+    }
 }
 
-pub fn config(cfg: &mut web::ServiceConfig) {
+// Get a specific review
+async fn get_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let review_id = path.into_inner();
+    match service.get_review(review_id) {
+        Ok(review) => HttpResponse::Ok().json(review),
+        Err(e) => map_error_to_response(e),
+    }
+}
+
+// Update a review
+async fn update_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateReviewDto>,
+) -> impl Responder {
+    let review_id = path.into_inner();
+    match service.update_review(review_id, body.rating, body.comment.clone()) { // Clone the comment
+        Ok(review) => HttpResponse::Ok().json(review),
+        Err(e) => map_error_to_response(e),
+    }
+}
+
+// Delete a review
+async fn delete_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let review_id = path.into_inner();
+    match service.delete_review(review_id) {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!( {
+            "status": "success",
+            "message": format!("Review with ID {} successfully deleted", review_id)
+        })),
+        Err(e) => map_error_to_response(e),
+    }
+}
+
+// Approve a review
+async fn approve_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let review_id = path.into_inner();
+    match service.approve_review(review_id) {
+        Ok(review) => HttpResponse::Ok().json(review),
+        Err(e) => map_error_to_response(e),
+    }
+}
+
+// Reject a review
+async fn reject_review<R: ReviewRepository>(
+    service: web::Data<ReviewServiceArc<R>>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let review_id = path.into_inner();
+    match service.reject_review(review_id) {
+        Ok(review) => HttpResponse::Ok().json(review),
+        Err(e) => map_error_to_response(e),
+    }
+}
+
+// Function to configure and register all routes
+pub fn configure_routes<R: ReviewRepository>(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::resource("/reviews")
-            .route(web::post().to(create_review))  
-    )
-    .service(
-        web::resource("/reviews/{id}") 
-            .route(web::put().to(update_review)) 
-            .route(web::delete().to(delete_review))  
-    )
-    .service(
-        web::resource("/reviews/event/{eventId}")
-            .route(web::get().to(get_reviews_by_event_id))  
-    )
-    .service(
-        web::resource("/reviews/average/{eventId}")
-            .route(web::get().to(get_average_rating)) 
+        web::scope("/api")
+            .service(
+                web::resource("/reviews")
+                    .route(web::post().to(create_review::<R>))
+            )
+            .service(
+                web::resource("/reviews/{review_id}")
+                    .route(web::get().to(get_review::<R>))
+                    .route(web::put().to(update_review::<R>))
+                    .route(web::delete().to(delete_review::<R>))
+            )
+            .service(
+                web::resource("/reviews/{review_id}/approve")
+                    .route(web::post().to(approve_review::<R>))
+            )
+            .service(
+                web::resource("/reviews/{review_id}/reject")
+                    .route(web::post().to(reject_review::<R>))
+            )
+            .service(
+                web::resource("/reviews/events/{event_id}")
+                    .route(web::get().to(list_reviews_by_event::<R>))
+            )
     );
 }
