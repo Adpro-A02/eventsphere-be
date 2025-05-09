@@ -1,4 +1,4 @@
-use crate::model::tiket::ticket::Ticket;
+use crate::model::ticket::ticket::Ticket;
 use uuid::Uuid;
 
 /// Defines the interface for Ticket repository operations
@@ -11,10 +11,10 @@ pub trait TicketRepository {
     fn update_quota(&self, id: &Uuid, new_quota: u32) -> Result<Ticket, String>;
 }
 
-pub mod ticket_repository;
 pub mod tests;
 
-pub use ticket_repository::TicketRepository;
+// Re-export the trait
+pub use self::TicketRepository;
 
 #[cfg(test)]
 pub mod tests;

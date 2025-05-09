@@ -1,5 +1,5 @@
-use crate::model::tiket::ticket::{Ticket, TicketStatus};
-use crate::repository::tiket::TicketRepository;
+use crate::model::ticket::ticket::{Ticket, TicketStatus};
+use crate::repository::ticket::TicketRepository;
 use rstest::*;
 use uuid::Uuid;
 use std::collections::HashMap;

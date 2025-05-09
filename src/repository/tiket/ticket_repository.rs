@@ -1,4 +1,4 @@
-use crate::model::tiket::ticket::Ticket;
+use crate::model::ticket::ticket::Ticket;
 use uuid::Uuid;
 
 /// Repository trait for handling Ticket data persistence

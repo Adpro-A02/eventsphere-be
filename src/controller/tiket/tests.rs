@@ -1,6 +1,7 @@
-use crate::model::tiket::ticket::{Ticket, TicketStatus};
-use crate::service::tiket::ticket_service::TicketService;
-use crate::controller::tiket::ticket_controller::*;
+// Fix import paths to match directory structure
+use crate::model::ticket::ticket::{Ticket, TicketStatus};
+use crate::service::ticket::ticket_service::TicketService;
+use crate::controller::ticket::ticket_controller::*;
 use mockall::predicate::*;
 use mockall::mock;
 use rstest::*;
@@ -11,7 +12,7 @@ use rocket::serde::json;
 use serde_json::{json, Value};
 
 // Import mock from the model tests
-use crate::model::tiket::tests::MockTicketService;
+use crate::model::ticket::tests::MockTicketService;
 
 // Test fixtures
 #[fixture]
