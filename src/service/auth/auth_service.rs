@@ -197,4 +197,8 @@ impl AuthService {
             Ok(())
         }
     }
+
+    pub fn get_jwt_secret(&self) -> &str {
+        &self.jwt_secret
+    }
 }
