@@ -1,156 +1,20 @@
-// filepath: c:\eventsphere-be\src\controller\auth\auth_controller.rs
 use crate::model::user::{User, UserRole};
 use crate::repository::user::user_repo::UserRepository;
 use crate::service::auth::auth_service::{AuthService, TokenPair};
 use rocket::{State, post, put, get, serde::json::Json, http::Status, routes};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::error::Error;
 use uuid::Uuid;
 
-pub struct AuthController {
-    pub user_repository: Arc<dyn UserRepository>,
-    pub auth_service: Arc<AuthService>,
-}
-
-impl AuthController {
-    pub fn new(user_repository: Arc<dyn UserRepository>, auth_service: Arc<AuthService>) -> Self {
-        Self {
-            user_repository,
-            auth_service,
-        }
-    }
-    pub fn routes() -> Vec<rocket::Route> {
-        routes![
-            register_handler,
-            login_handler,
-            get_user_handler,
-            update_profile_handler,
-            refresh_token_handler,
-            get_current_user_handler
-        ]
-    }
-    
-    pub async fn register(&self, req: RegisterRequest) -> Result<AuthResponse, Box<dyn Error>> {
-        if let Ok(Some(_)) = self.user_repository.find_by_email(&req.email).await {
-            return Err("User with this email already exists".into());
-        }
-        
-        let hashed_password = self.auth_service.hash_password(&req.password)?;
-        
-        let role = req.role.unwrap_or(UserRole::Attendee);
-        let user = User::new(req.name.clone(), req.email.clone(), hashed_password, role);
-        
-        self.user_repository.create(&user).await?;
-        
-        let token_pair = self.auth_service.generate_token(&user).await?;
-        
-        Ok(AuthResponse {
-            token: token_pair.access_token,
-            refresh_token: token_pair.refresh_token,
-            user_id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-        })
-    }
-    
-    pub async fn login(&self, req: LoginRequest) -> Result<AuthResponse, Box<dyn Error>> {
-        let user = match self.user_repository.find_by_email(&req.email).await? {
-            Some(u) => u,
-            None => return Err("Invalid email or password".into()),
-        };
-        
-        if !self.auth_service.verify_password(&user.password, &req.password)? {
-            return Err("Invalid email or password".into());
-        }
-        
-        let mut updated_user = user.clone();
-        updated_user.update_last_login();
-        self.user_repository.update(&updated_user).await?;
-        
-        let token_pair = self.auth_service.generate_token(&updated_user).await?;
-        
-        Ok(AuthResponse {
-            token: token_pair.access_token,
-            refresh_token: token_pair.refresh_token,
-            user_id: updated_user.id,
-            name: updated_user.name,
-            email: updated_user.email,
-            role: updated_user.role,
-        })
-    }
-    
-    pub async fn get_user(&self, user_id: Uuid) -> Result<UserResponse, Box<dyn Error>> {
-        let user = self.user_repository.find_by_id(user_id).await?
-            .ok_or("User not found")?;
-            
-        Ok(UserResponse {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            created_at: user.created_at.to_rfc3339(),
-            updated_at: user.updated_at.to_rfc3339(),
-            last_login: user.last_login.map(|dt| dt.to_rfc3339()),
-        })
-    }
-    
-    pub async fn update_profile(
-        &self,
-        user_id: Uuid,
-        name: Option<String>,
-        email: Option<String>,
-    ) -> Result<UserResponse, Box<dyn Error>> {
-        let mut user = self.user_repository.find_by_id(user_id).await?
-            .ok_or("User not found")?;
-            
-        if let Some(ref new_email) = email {
-            if new_email != &user.email {
-                if let Ok(Some(_)) = self.user_repository.find_by_email(new_email).await {
-                    return Err("Email already in use".into());
-                }
-            }
-        }
-        
-        user.update_profile(name, email);
-        self.user_repository.update(&user).await?;
-        
-        Ok(UserResponse {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            created_at: user.created_at.to_rfc3339(),
-            updated_at: user.updated_at.to_rfc3339(),
-            last_login: user.last_login.map(|dt| dt.to_rfc3339()),
-        })
-    }
-    
-    pub async fn change_password(
-        &self,
-        user_id: Uuid,
-        current_password: String,
-        new_password: String,
-    ) -> Result<(), Box<dyn Error>> {
-        let mut user = self.user_repository.find_by_id(user_id).await?
-            .ok_or("User not found")?;
-            
-        if !self.auth_service.verify_password(&user.password, &current_password)? {
-            return Err("Invalid current password".into());
-        }
-        
-        let hashed_password = self.auth_service.hash_password(&new_password)?;
-        user.password = hashed_password;
-        
-        self.user_repository.update(&user).await?;
-        
-        Ok(())
-    }
-    
-    pub async fn refresh_token(&self, refresh_token: &str) -> Result<TokenPair, Box<dyn Error>> {
-        self.auth_service.refresh_access_token(refresh_token).await
-    }
+pub fn auth_routes() -> Vec<rocket::Route> {
+    routes![
+        register_handler,
+        login_handler,
+        get_user_handler,
+        update_profile_handler,
+        refresh_token_handler,
+        get_current_user_handler
+    ]
 }
 
 #[derive(Debug, Serialize)]
@@ -168,8 +32,8 @@ impl<T> ApiResponse<T>
 where
     T: Serialize,
 {
-    pub fn success(message: &str, data: T) -> rocket::serde::json::Json<Self> {
-        rocket::serde::json::Json(Self {
+    pub fn success(message: &str, data: T) -> Json<Self> {
+        Json(Self {
             success: true,
             status_code: 200,
             message: message.to_string(),
@@ -177,8 +41,8 @@ where
         })
     }
     
-    pub fn error(status_code: u16, message: &str) -> rocket::serde::json::Json<Self> {
-        rocket::serde::json::Json(Self {
+    pub fn error(status_code: u16, message: &str) -> Json<Self> {
+        Json(Self {
             success: false,
             status_code,
             message: message.to_string(),
@@ -234,7 +98,6 @@ pub struct UpdateProfileRequest {
     pub email: Option<String>,
 }
 
-// Rocket handler functions
 #[post("/auth/register", data = "<req>")]
 pub async fn register_handler(
     req: Json<RegisterRequest>,

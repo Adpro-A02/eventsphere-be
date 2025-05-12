@@ -21,7 +21,7 @@ use crate::controller::event::event_controller::{DynEventService, EventServiceTr
 use crate::repository::user::user_repo::{UserRepository, DbUserRepository, PostgresUserRepository};
 use crate::repository::auth::token_repo::{TokenRepository, PostgresRefreshTokenRepository};
 use crate::service::auth::auth_service::AuthService;
-use crate::controller::auth::auth_controller::AuthController;
+use crate::controller::auth::auth_controller::auth_routes;
 
 struct AppState {
     db_pool: Arc<sqlx::PgPool>,
@@ -73,5 +73,5 @@ fn rocket() -> Rocket<Build> {
                 .manage(user_repository.clone())
                 .manage(auth_service.clone())
         }))
-        .mount("/api", AuthController::routes())
+        .mount("/api", auth_routes())
 }
