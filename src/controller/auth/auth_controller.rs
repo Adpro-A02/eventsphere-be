@@ -26,7 +26,8 @@ impl AuthController {
             login_handler,
             get_user_handler,
             update_profile_handler,
-            refresh_token_handler
+            refresh_token_handler,
+            get_current_user_handler
         ]
     }
     
@@ -310,6 +311,7 @@ pub async fn login_handler(
 
 #[get("/auth/user/<user_id>")]
 pub async fn get_user_handler(
+    token: crate::middleware::auth::JwtToken,
     user_id: &str,
     user_repository: &State<Arc<dyn UserRepository>>,
 ) -> Result<Json<ApiResponse<UserResponse>>, Status> {
@@ -317,6 +319,14 @@ pub async fn get_user_handler(
         Ok(id) => id,
         Err(_) => return Ok(ApiResponse::error(400, "Invalid UUID format")),
     };
+    
+    let token_user_id = match Uuid::parse_str(&token.user_id) {
+        Ok(id) => id,
+        Err(_) => return Err(Status::Unauthorized),
+    };
+    if token_user_id != uuid && token.role.to_lowercase() != "admin" {
+        return Err(Status::Forbidden);
+    }
     
     let repo = user_repository.inner();
     let user = match repo.find_by_id(uuid).await {
@@ -336,6 +346,7 @@ pub async fn get_user_handler(
 
 #[put("/auth/profile/<user_id>", data = "<req>")]
 pub async fn update_profile_handler(
+    token: crate::middleware::auth::JwtToken,
     user_id: &str,
     req: Json<UpdateProfileRequest>,
     user_repository: &State<Arc<dyn UserRepository>>,
@@ -344,6 +355,14 @@ pub async fn update_profile_handler(
         Ok(id) => id,
         Err(_) => return Ok(ApiResponse::error(400, "Invalid UUID format")),
     };  
+    
+    let token_user_id = match Uuid::parse_str(&token.user_id) {
+        Ok(id) => id,
+        Err(_) => return Err(Status::Unauthorized),
+    };
+    if token_user_id != uuid && token.role.to_lowercase() != "admin" {
+        return Err(Status::Forbidden);
+    }
     
     let repo = user_repository.inner();
     let mut user = match repo.find_by_id(uuid).await {
@@ -382,4 +401,31 @@ pub async fn refresh_token_handler(
         Ok(token_pair) => Ok(ApiResponse::success("Token refreshed", token_pair)),
         Err(_) => Ok(ApiResponse::error(400, "Invalid refresh token")),
     }
+}
+
+#[get("/auth/me")]
+pub async fn get_current_user_handler(
+    token: crate::middleware::auth::JwtToken,
+    user_repository: &State<Arc<dyn UserRepository>>,
+) -> Result<Json<ApiResponse<UserResponse>>, Status> {
+    let user_id = match Uuid::parse_str(&token.user_id) {
+        Ok(id) => id,
+        Err(_) => return Err(Status::Unauthorized),
+    };
+    
+    let repo = user_repository.inner();
+    let user = match repo.find_by_id(user_id).await {
+        Ok(Some(u)) => u,
+        _ => return Ok(ApiResponse::error(404, "User not found")),
+    };
+    
+    Ok(ApiResponse::success("User found", UserResponse {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        created_at: user.created_at.to_rfc3339(),
+        updated_at: user.updated_at.to_rfc3339(),
+        last_login: user.last_login.map(|dt| dt.to_rfc3339()),
+    }))
 }
