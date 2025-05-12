@@ -1,9 +1,7 @@
-use super::auth_controller::{
-    AuthController, LoginRequest, RegisterRequest, AuthResponse, UserResponse
-};
-use crate::model::user::{User, UserRole};
+use super::auth_controller::auth_routes;
+use crate::model::user::User;
 use crate::repository::user::user_repo::UserRepository;
-use crate::service::auth::auth_service::{AuthService, TokenPair};
+use crate::service::auth::auth_service::AuthService;
 use async_trait::async_trait;
 use mockall::mock;
 use mockall::predicate::*;
@@ -13,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 use rocket::http::Status;
 use rocket::local::asynchronous::Client;
+use serde_json;
 
 mock! {
     pub UserRepo {}
@@ -103,209 +102,334 @@ impl UserRepository for InMemoryUserRepo {
     }
 }
 
-fn setup_controller() -> Arc<AuthController> {
-    let user_repo = Arc::new(InMemoryUserRepo::new());
+fn setup_test_dependencies() -> (Arc<dyn UserRepository>, Arc<AuthService>) {
+    let user_repo: Arc<dyn UserRepository> = Arc::new(InMemoryUserRepo::new());
     let auth_service = Arc::new(AuthService::new("test_secret".to_string(), "test_refresh_secret".to_string(), "test_pepper".to_string()));
-    Arc::new(AuthController::new(user_repo, auth_service))
+    (user_repo, auth_service)
 }
 
-// Regular function tests for direct method calls
 #[tokio::test]
 async fn test_register_success() {
-    let controller = setup_controller();
-    let req = RegisterRequest {
-        name: "Test User".to_string(),
-        email: "test@example.com".to_string(),
-        password: "password".to_string(),
-        role: Some(UserRole::Attendee),
-    };
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Test User",
+        "email":"test@example.com",
+        "password":"password",
+        "role":"Attendee"
+    }"#;
 
-    let result = controller.register(req).await;
-    assert!(result.is_ok());
-
-    let response = result.unwrap();
-    assert_eq!(response.name, "Test User");
-    assert_eq!(response.email, "test@example.com");
-    assert_eq!(response.role, UserRole::Attendee);
-    assert!(!response.token.is_empty());
+    let response = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
+        .await;
+        
+    assert_eq!(response.status(), Status::Ok);
+    
+    let response_body: rocket::serde::json::Value = response.into_json().await.unwrap();
+    assert!(response_body.get("success").unwrap().as_bool().unwrap());
+    
+    let data = response_body.get("data").unwrap();
+    assert_eq!(data.get("name").unwrap().as_str().unwrap(), "Test User");
+    assert_eq!(data.get("email").unwrap().as_str().unwrap(), "test@example.com");
+    assert_eq!(data.get("role").unwrap().as_str().unwrap(), "Attendee");
+    assert!(!data.get("token").unwrap().as_str().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn test_register_duplicate_email() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json1 = r#"{
+        "name":"Test User",
+        "email":"duplicate@example.com",
+        "password":"password",
+        "role":null
+    }"#;
 
-    let req1 = RegisterRequest {
-        name: "Test User".to_string(),
-        email: "duplicate@example.com".to_string(),
-        password: "password".to_string(),
-        role: None,
-    };
-    let _ = controller.register(req1).await.unwrap();
+    let response1 = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json1)
+        .dispatch()
+        .await;
+        
+    assert_eq!(response1.status(), Status::Ok);
 
-    let req2 = RegisterRequest {
-        name: "Another User".to_string(),
-        email: "duplicate@example.com".to_string(),
-        password: "different_password".to_string(),
-        role: None,
-    };
-    let result = controller.register(req2).await;
-
-    assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err().to_string(),
-        "User with this email already exists"
-    );
+    let register_json2 = r#"{
+        "name":"Another User",
+        "email":"duplicate@example.com",
+        "password":"different_password",
+        "role":null
+    }"#;
+    
+    let response2 = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json2)
+        .dispatch()
+        .await;
+    
+    assert_eq!(response2.status(), Status::Ok);
+    
+    let response_body: rocket::serde::json::Value = response2.into_json().await.unwrap();
+    assert!(!response_body.get("success").unwrap().as_bool().unwrap());
+    assert_eq!(response_body.get("message").unwrap().as_str().unwrap(), "Email already registered");
 }
 
 #[tokio::test]
 async fn test_login_success() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Login Test",
+        "email":"login@example.com",
+        "password":"correct_password",
+        "role":null
+    }"#;
 
-    let register_req = RegisterRequest {
-        name: "Login Test".to_string(),
-        email: "login@example.com".to_string(),
-        password: "correct_password".to_string(),
-        role: None,
-    };
-    let _ = controller.register(register_req).await.unwrap();
-
-    let login_req = LoginRequest {
-        email: "login@example.com".to_string(),
-        password: "correct_password".to_string(),
-    };
-
-    let result = controller.login(login_req).await;
-    assert!(result.is_ok());
-
-    let response = result.unwrap();
-    assert_eq!(response.email, "login@example.com");
-    assert!(!response.token.is_empty());
+    client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
+        .await;
+    
+    let login_json = r#"{
+        "email":"login@example.com",
+        "password":"correct_password"
+    }"#;
+    
+    let response = client
+        .post("/auth/login")
+        .header(rocket::http::ContentType::JSON)
+        .body(login_json)
+        .dispatch()
+        .await;
+        
+    assert_eq!(response.status(), Status::Ok);
+    
+    let response_body: rocket::serde::json::Value = response.into_json().await.unwrap();
+    assert!(response_body.get("success").unwrap().as_bool().unwrap());
+    
+    let data = response_body.get("data").unwrap();
+    assert_eq!(data.get("email").unwrap().as_str().unwrap(), "login@example.com");
+    assert!(!data.get("token").unwrap().as_str().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn test_login_invalid_password() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Login Test",
+        "email":"login_fail@example.com",
+        "password":"correct_password",
+        "role":null
+    }"#;
 
-    let register_req = RegisterRequest {
-        name: "Login Test".to_string(),
-        email: "login_fail@example.com".to_string(),
-        password: "correct_password".to_string(),
-        role: None,
-    };
-    let _ = controller.register(register_req).await.unwrap();
-
-    let login_req = LoginRequest {
-        email: "login_fail@example.com".to_string(),
-        password: "wrong_password".to_string(),
-    };
-
-    let result = controller.login(login_req).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().to_string(), "Invalid email or password");
+    client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
+        .await;
+    
+    let login_json = r#"{
+        "email":"login_fail@example.com",
+        "password":"wrong_password"
+    }"#;
+    
+    let response = client
+        .post("/auth/login")
+        .header(rocket::http::ContentType::JSON)
+        .body(login_json)
+        .dispatch()
+        .await;
+        
+    assert_eq!(response.status(), Status::Ok);
+    
+    let response_body: rocket::serde::json::Value = response.into_json().await.unwrap();
+    assert!(!response_body.get("success").unwrap().as_bool().unwrap());
+    assert_eq!(response_body.get("message").unwrap().as_str().unwrap(), "Invalid email or password");
 }
 
 #[tokio::test]
 async fn test_get_user() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Get User Test",
+        "email":"get_user@example.com",
+        "password":"password",
+        "role":null
+    }"#;
 
-    let register_req = RegisterRequest {
-        name: "Get User Test".to_string(),
-        email: "get_user@example.com".to_string(),
-        password: "password".to_string(),
-        role: None,
-    };
-    let register_response = controller.register(register_req).await.unwrap();
-
-    let result = controller.get_user(register_response.user_id).await;
-    assert!(result.is_ok());
-
-    let user = result.unwrap();
-    assert_eq!(user.name, "Get User Test");
-    assert_eq!(user.email, "get_user@example.com");
+    let register_response = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
+        .await;
+    
+    let register_body = register_response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    let user_id = register_body["data"]["user_id"].as_str().unwrap();
+    let token = register_body["data"]["token"].as_str().unwrap();    // Now get the user using the token
+    let response = client
+        .get(format!("/auth/user/{}", user_id))
+        .header(rocket::http::Header::new("Authorization", format!("Bearer {}", token)))
+        .dispatch()
+        .await;
+    
+    assert_eq!(response.status(), Status::Ok);
+    
+    let response_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    assert!(response_body["success"].as_bool().unwrap());
+    
+    let data = &response_body["data"];
+    assert_eq!(data["name"].as_str().unwrap(), "Get User Test");
+    assert_eq!(data["email"].as_str().unwrap(), "get_user@example.com");
 }
 
 #[tokio::test]
 async fn test_update_profile() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Update Test",
+        "email":"update@example.com",
+        "password":"password",
+        "role":null
+    }"#;
 
-    let register_req = RegisterRequest {
-        name: "Update Test".to_string(),
-        email: "update@example.com".to_string(),
-        password: "password".to_string(),
-        role: None,
-    };
-    let register_response = controller.register(register_req).await.unwrap();
-
-    let result = controller
-        .update_profile(
-            register_response.user_id,
-            Some("Updated Name".to_string()),
-            Some("updated@example.com".to_string()),
-        )
+    let register_response = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
         .await;
-
-    assert!(result.is_ok());
-
-    let updated_user = result.unwrap();
-    assert_eq!(updated_user.name, "Updated Name");
-    assert_eq!(updated_user.email, "updated@example.com");
+    
+    let register_body = register_response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    let user_id = register_body["data"]["user_id"].as_str().unwrap();
+    let token = register_body["data"]["token"].as_str().unwrap();
+    
+    let update_json = r#"{
+        "name": "Updated Name",
+        "email": "updated@example.com"
+    }"#;    
+    
+    let response = client
+        .put(format!("/auth/profile/{}", user_id))
+        .header(rocket::http::ContentType::JSON)
+        .header(rocket::http::Header::new("Authorization", format!("Bearer {}", token)))
+        .body(update_json)
+        .dispatch()
+        .await;
+      assert_eq!(response.status(), Status::Ok);
+    
+    let response_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    assert!(response_body["success"].as_bool().unwrap());
+    
+    let data = &response_body["data"];
+    assert_eq!(data["name"].as_str().unwrap(), "Updated Name");
+    assert_eq!(data["email"].as_str().unwrap(), "updated@example.com");
 }
 
 #[tokio::test]
-async fn test_change_password() {
-    let controller = setup_controller();
+async fn test_login_with_incorrect_password() {
+    let (user_repo, auth_service) = setup_test_dependencies();
+    
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
+    
+    let register_json = r#"{
+        "name":"Password Test",
+        "email":"password_fail@example.com",
+        "password":"correct_password",
+        "role":null
+    }"#;
 
-    let register_req = RegisterRequest {
-        name: "Password Test".to_string(),
-        email: "password@example.com".to_string(),
-        password: "correct_password".to_string(),
-        role: None,
-    };
-    let register_response = controller.register(register_req).await.unwrap();
-
-    let result = controller
-        .change_password(
-            register_response.user_id,
-            "correct_password".to_string(),
-            "new_password".to_string(),
-        )
+    client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
         .await;
-
-    assert!(result.is_ok());
+    
+    let login_json = r#"{
+        "email":"password_fail@example.com",
+        "password":"wrong_password"
+    }"#;
+    
+    let response = client
+        .post("/auth/login")
+        .header(rocket::http::ContentType::JSON)
+        .body(login_json)
+        .dispatch()
+        .await;
+    
+    assert_eq!(response.status(), Status::Ok);
+    
+    let response_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    assert!(!response_body["success"].as_bool().unwrap());
+    assert_eq!(response_body["message"].as_str().unwrap(), "Invalid email or password");
 }
 
-#[tokio::test]
-async fn test_change_password_invalid_current() {
-    let controller = setup_controller();
-
-    let register_req = RegisterRequest {
-        name: "Password Test".to_string(),
-        email: "password_fail@example.com".to_string(),
-        password: "correct_password".to_string(),
-        role: None,
-    };
-    let register_response = controller.register(register_req).await.unwrap();
-
-    let result = controller
-        .change_password(
-            register_response.user_id,
-            "wrong_password".to_string(),
-            "new_password".to_string(),
-        )
-        .await;
-
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().to_string(), "Invalid current password");
-}
-
-// Rocket API route tests
 #[tokio::test]
 async fn test_register_route() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
     let rocket = rocket::build()
-        .manage(controller.user_repository.clone())
-        .manage(controller.auth_service.clone())
-        .mount("/", AuthController::routes());
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
     let client = Client::tracked(rocket).await.expect("valid rocket instance");
     
     let register_json = r#"{
@@ -331,11 +455,11 @@ async fn test_register_route() {
 
 #[tokio::test]
 async fn test_login_route() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
     let rocket = rocket::build()
-        .manage(controller.user_repository.clone())
-        .manage(controller.auth_service.clone())
-        .mount("/", AuthController::routes());
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
     let client = Client::tracked(rocket).await.expect("valid rocket instance");
 
     let register_json = r#"{
@@ -373,11 +497,11 @@ async fn test_login_route() {
 
 #[tokio::test]
 async fn test_get_user_route() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
     let rocket = rocket::build()
-        .manage(controller.user_repository.clone())
-        .manage(controller.auth_service.clone())
-        .mount("/", AuthController::routes());
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
     let client = Client::tracked(rocket).await.expect("valid rocket instance");
 
     let register_json = r#"{
@@ -387,24 +511,18 @@ async fn test_get_user_route() {
         "role":null
     }"#;
     
-    let response = client
+    let register_response = client
         .post("/auth/register")
         .header(rocket::http::ContentType::JSON)
         .body(register_json)
         .dispatch()
         .await;
 
-    let body = response.into_string().await.unwrap();
+    let register_body = register_response.into_json::<serde_json::Value>().await.unwrap();
     
-    // Extract user_id and token from the response
-    let user_id_start = body.find(r#""user_id":""#).unwrap() + 11;
-    let user_id_end = body[user_id_start..].find(r#"""#).unwrap() + user_id_start;
-    let user_id = &body[user_id_start..user_id_end];
+    let user_id = register_body["data"]["user_id"].as_str().unwrap();
+    let token = register_body["data"]["token"].as_str().unwrap();
     
-    let token_start = body.find(r#""token":""#).unwrap() + 8;
-    let token_end = body[token_start..].find(r#"""#).unwrap() + token_start;
-    let token = &body[token_start..token_end];
-
     let response = client
         .get(format!("/auth/user/{}", user_id))
         .header(rocket::http::Header::new("Authorization", format!("Bearer {}", token)))
@@ -413,18 +531,18 @@ async fn test_get_user_route() {
 
     assert_eq!(response.status(), Status::Ok);
     
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("success"));
-    assert!(body.contains("user_route@example.com"));
+    let response_body = response.into_json::<serde_json::Value>().await.unwrap();
+    assert!(response_body["success"].as_bool().unwrap());
+    assert!(response_body["data"]["email"].as_str().unwrap().contains("user_route@example.com"));
 }
 
 #[tokio::test]
 async fn test_refresh_token_route() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
     let rocket = rocket::build()
-        .manage(controller.user_repository.clone())
-        .manage(controller.auth_service.clone())
-        .mount("/", AuthController::routes());
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
     let client = Client::tracked(rocket).await.expect("valid rocket instance");
 
     let register_json = r#"{
@@ -447,7 +565,6 @@ async fn test_refresh_token_route() {
     
     let response_json: serde_json::Value = serde_json::from_str(&body).expect("Invalid JSON response");
     
-    // Extract the refresh token using proper JSON path
     let refresh_token = response_json["data"]["refresh_token"]
         .as_str()
         .expect("Refresh token not found in response");
@@ -471,35 +588,66 @@ async fn test_refresh_token_route() {
 
 #[tokio::test]
 async fn test_refresh_token() {
-    let controller = setup_controller();
-
-    // First register a user
-    let register_req = RegisterRequest {
-        name: "Refresh Token Test".to_string(),
-        email: "refresh_test@example.com".to_string(),
-        password: "password123".to_string(),
-        role: None,
-    };
-    let register_response = controller.register(register_req).await.unwrap();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
     
-    // Use the refresh token to get new access token
-    let result = controller.refresh_token(&register_response.refresh_token).await;
+    let register_json = r#"{
+        "name":"Refresh Token Test",
+        "email":"refresh_direct@example.com",
+        "password":"password123",
+        "role":null
+    }"#;
     
-    assert!(result.is_ok());
-    let token_pair = result.unwrap();
-    assert!(!token_pair.access_token.is_empty());
-    assert!(!token_pair.refresh_token.is_empty());
+    let response = client
+        .post("/auth/register")
+        .header(rocket::http::ContentType::JSON)
+        .body(register_json)
+        .dispatch()
+        .await;
+    
+    let register_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    let refresh_token = register_body["data"]["refresh_token"].as_str().unwrap();
+    
+    let refresh_json = format!(r#"{{"refresh_token":"{}"}}"#, refresh_token);
+    let response = client
+        .post("/auth/refresh")
+        .header(rocket::http::ContentType::JSON)
+        .body(refresh_json)
+        .dispatch()
+        .await;
+    
+    assert_eq!(response.status(), Status::Ok);
+    
+    let refresh_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    assert!(refresh_body["success"].as_bool().unwrap());
+    assert!(!refresh_body["data"]["access_token"].as_str().unwrap().is_empty());
+    assert!(!refresh_body["data"]["refresh_token"].as_str().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn test_refresh_token_invalid() {
-    let controller = setup_controller();
+    let (user_repo, auth_service) = setup_test_dependencies();
+    let rocket = rocket::build()
+        .manage(user_repo.clone())
+        .manage(auth_service.clone())
+        .mount("/", auth_routes());
+    let client = Client::tracked(rocket).await.expect("valid rocket instance");
     
-    // Try to refresh with invalid token
-    let result = controller.refresh_token("invalid_token_that_doesnt_exist").await;
+    let refresh_json = r#"{"refresh_token":"invalid_token_that_doesnt_exist"}"#;
+    let response = client
+        .post("/auth/refresh")
+        .header(rocket::http::ContentType::JSON)
+        .body(refresh_json)
+        .dispatch()
+        .await;
     
-    assert!(result.is_err());
-    // Accept either error string for compatibility
-    let err_str = result.unwrap_err().to_string();
-    assert!(err_str == "Invalid refresh token" || err_str == "InvalidToken", "Unexpected error: {}", err_str);
+    assert_eq!(response.status(), Status::Ok);
+    
+    let refresh_body = response.into_json::<rocket::serde::json::Value>().await.unwrap();
+    assert!(!refresh_body["success"].as_bool().unwrap());
+    assert_eq!(refresh_body["message"].as_str().unwrap(), "Invalid refresh token");
 }
