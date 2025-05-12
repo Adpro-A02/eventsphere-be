@@ -1,7 +1,9 @@
-use rocket::{request::{self, FromRequest, Request}, outcome::Outcome};
+use rocket::{request::{self, FromRequest, Request}, outcome::Outcome, State};
 use rocket::http::Status;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use crate::service::auth::auth_service::AuthService;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -18,7 +20,7 @@ pub struct JwtToken {
 
 impl JwtToken {
     pub fn is_admin(&self) -> bool {
-        self.role == "admin"
+        self.role.to_lowercase() == "admin"
     }
 }
 
@@ -27,7 +29,6 @@ impl<'r> FromRequest<'r> for JwtToken {
     type Error = ();
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        // Get the JWT from the Authorization header
         let token = req.headers().get_one("Authorization")
             .map(|value| value.replace("Bearer ", ""));
             
@@ -36,20 +37,27 @@ impl<'r> FromRequest<'r> for JwtToken {
             None => return Outcome::Error((Status::Unauthorized, ())),
         };
         
-        // Get the secret key from configuration
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "default_secret".to_string());
+        let auth_service_ref = match req.guard::<&State<Arc<AuthService>>>().await {
+            Outcome::Success(auth) => auth,
+            _ => {
+                return Outcome::Error((Status::InternalServerError, ()));
+            }
+        };
+
+        let auth_service = auth_service_ref.inner();
+        let secret = auth_service.get_jwt_secret();
         
-        // Decode and validate the JWT
         let token_data = match decode::<Claims>(
             &token,
             &DecodingKey::from_secret(secret.as_bytes()),
             &Validation::new(Algorithm::HS256),
         ) {
             Ok(c) => c,
-            Err(_) => return Outcome::Error((Status::Unauthorized, ())),
+            Err(e) => {
+                return Outcome::Error((Status::Unauthorized, ()));
+            },
         };
         
-        // Create a JwtToken from the decoded data
         let jwt_token = JwtToken {
             user_id: token_data.claims.sub,
             role: token_data.claims.role,
