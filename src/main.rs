@@ -1,4 +1,5 @@
-#[macro_use] extern crate rocket;
+use actix_web::{App, HttpServer, web, middleware::Logger};
+use std::sync::Arc;
 
 mod model;
 mod repository;
