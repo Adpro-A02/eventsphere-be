@@ -5,12 +5,13 @@ mod repository;
 mod service;
 mod controller;
 mod middleware;
-
+use dotenv::dotenv;
+use std::env;
 use rocket::State;
 use std::sync::Arc;
 use rocket::fs::{FileServer, relative};
 use rocket::{Build, Rocket};
-use std::env;
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use sqlx::postgres::PgPoolOptions;
 use rocket::fairing::AdHoc;
 
@@ -24,12 +25,25 @@ struct AppState {
     auth_service: Arc<AuthService>,
 }
 
+fn cors_fairing() -> rocket_cors::Cors {
+    let allowed_origins = AllowedOrigins::some_exact(&["http://localhost:3000"]);
+
+    CorsOptions {
+        allowed_origins,
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .expect("Error while building CORS")
+}
+
 #[launch]
 fn rocket() -> Rocket<Build> {
+    dotenv().ok();
     rocket::build()
         .attach(AdHoc::on_ignite("Database Setup", |rocket| async {
             let database_url = env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://postgres:adalahjojojo@localhost:5432/eventsphere".to_string());
+                .unwrap_or_else(|_| "postgres://postgres:Priapta123@localhost:5432/eventsphere".to_string());
                 
             let db_pool = PgPoolOptions::new()
                 .max_connections(5)
@@ -63,5 +77,12 @@ fn rocket() -> Rocket<Build> {
                 .manage(user_repository.clone())
                 .manage(auth_service.clone())
         }))
+        .attach(cors_fairing())
         .mount("/api", auth_routes())
+        .mount("/", routes![all_options])
+}
+
+#[options("/<_..>")]
+fn all_options() -> &'static str {
+    ""
 }

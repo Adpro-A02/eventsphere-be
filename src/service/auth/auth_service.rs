@@ -7,7 +7,7 @@ use argon2::password_hash::PasswordHasher;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{EncodingKey, Header, encode, decode, DecodingKey, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rocket::fairing::Result;
 use serde::{Serialize, Deserialize};
 use std::error::Error;
@@ -86,9 +86,10 @@ impl AuthService {
             .expect("valid timestamp")
             .timestamp();
 
+        
         let claims = Claims {
             sub: user.id.to_string(),
-            role: format!("{:?}", user.role),
+            role: user.role.to_string(),
             exp: expiration,
         };
 
@@ -97,6 +98,8 @@ impl AuthService {
             &claims,
             &EncodingKey::from_secret(self.jwt_secret.as_bytes())
         )?;
+        
+
 
         // Refresh Token
         let refresh_exp = Utc::now()
