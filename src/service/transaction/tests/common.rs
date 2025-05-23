@@ -9,6 +9,7 @@ use crate::repository::transaction::balance_repo::BalanceRepository;
 use crate::service::transaction::balance_service::{BalanceService, DefaultBalanceService};
 use crate::service::transaction::payment_service::{PaymentService, MockPaymentService};
 use crate::service::transaction::transaction_service::DefaultTransactionService;
+use async_trait::async_trait;
 
 pub struct MockTransactionRepository {
     transactions: Mutex<HashMap<Uuid, Transaction>>,
@@ -22,20 +23,21 @@ impl MockTransactionRepository {
     }
 }
 
+#[async_trait]
 impl TransactionRepository for MockTransactionRepository {
-    fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>> {
+    async fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.lock().unwrap();
         let transaction_clone = transaction.clone();
         transactions.insert(transaction.id, transaction_clone.clone());
         Ok(transaction_clone)
     }
 
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>> {
         let transactions = self.transactions.lock().unwrap();
         Ok(transactions.get(&id).cloned())
     }
 
-    fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>> {
+    async fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>> {
         let transactions = self.transactions.lock().unwrap();
         let user_transactions: Vec<Transaction> = transactions
             .values()
@@ -45,7 +47,7 @@ impl TransactionRepository for MockTransactionRepository {
         Ok(user_transactions)
     }
 
-    fn update_status(&self, id: Uuid, status: TransactionStatus) -> Result<Transaction, Box<dyn Error>> {
+    async fn update_status(&self, id: Uuid, status: TransactionStatus) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.lock().unwrap();
         
         match transactions.get_mut(&id) {
@@ -58,7 +60,7 @@ impl TransactionRepository for MockTransactionRepository {
         }
     }
 
-    fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>> {
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.lock().unwrap();
         if transactions.remove(&id).is_some() {
             Ok(())
@@ -80,14 +82,15 @@ impl MockBalanceRepository {
     }
 }
 
+#[async_trait]
 impl BalanceRepository for MockBalanceRepository {
-    fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut balances = self.balances.lock().unwrap();
         balances.insert(balance.user_id, balance.clone());
         Ok(())
     }
 
-    fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>> {
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>> {
         let balances = self.balances.lock().unwrap();
         Ok(balances.get(&user_id).cloned())
     }

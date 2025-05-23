@@ -52,6 +52,17 @@ impl AppError {
             AppError::Infrastructure(_) | AppError::Internal(_) => Status::InternalServerError,
         }
     }
+
+    pub fn to_status_http(&self) -> warp::http::StatusCode {
+        match self {
+            AppError::NotFound(_) => warp::http::StatusCode::NOT_FOUND,
+            AppError::Validation(_) => warp::http::StatusCode::BAD_REQUEST,
+            AppError::Authentication(_) => warp::http::StatusCode::UNAUTHORIZED,
+            AppError::Authorization(_) => warp::http::StatusCode::FORBIDDEN,
+            AppError::Database(_) | AppError::Storage(_) |
+            AppError::Infrastructure(_) | AppError::Internal(_) => warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
     
     /// Converts the error to a JSON response
     pub fn to_json(&self, validation_errors: Option<Vec<ValidationError>>) -> Value {

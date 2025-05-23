@@ -1,6 +1,7 @@
 use crate::service::transaction::tests::common::*;
 use uuid::Uuid;
 use crate::model::transaction::Transaction;
+use tokio::runtime::Runtime;
 
 #[cfg(test)]
 mod tests {
@@ -8,6 +9,7 @@ mod tests {
 
     #[test]
     fn test_process_payment_positive_amount() {
+        let rt = Runtime::new().unwrap();
         let payment_service = create_payment_service();
         let user_id = Uuid::new_v4();
         
@@ -19,16 +21,17 @@ mod tests {
             "Credit Card".to_string(),
         );
         
-        let result = payment_service.process_payment(&transaction);
+        let result = rt.block_on(payment_service.process_payment(&transaction));
         
         assert!(result.is_ok());
         let (success, reference) = result.unwrap();
         assert!(success);
         assert!(reference.is_some());
-    }
-
+    }    
+    
     #[test]
     fn test_process_payment_negative_amount() {
+        let rt = Runtime::new().unwrap();
         let payment_service = create_payment_service();
         let user_id = Uuid::new_v4();
         
@@ -41,7 +44,7 @@ mod tests {
         );
         transaction.amount = -1000;
         
-        let result = payment_service.process_payment(&transaction);
+        let result = rt.block_on(payment_service.process_payment(&transaction));
         
         assert!(result.is_ok());
         let (success, reference) = result.unwrap();
