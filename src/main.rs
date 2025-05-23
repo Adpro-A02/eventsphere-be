@@ -1,5 +1,4 @@
-use actix_web::{App, HttpServer, web, middleware::Logger};
-use std::sync::Arc;
+#[macro_use] extern crate rocket;
 
 mod model;
 mod repository;
@@ -8,9 +7,7 @@ mod controller;
 mod middleware;
 use dotenv::dotenv;
 use std::env;
-use rocket::State;
 use std::sync::Arc;
-use rocket::fs::{FileServer, relative};
 use rocket::{Build, Rocket};
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use sqlx::postgres::PgPoolOptions;
@@ -20,10 +17,17 @@ use crate::repository::user::user_repo::{UserRepository, DbUserRepository, Postg
 use crate::repository::auth::token_repo::{TokenRepository, PostgresRefreshTokenRepository};
 use crate::service::auth::auth_service::AuthService;
 use crate::controller::auth::auth_controller::auth_routes;
+use crate::controller::transaction::transaction_controller::transaction_routes;
+use crate::repository::transaction::transaction_repo::{TransactionRepository, DbTransactionRepository, PostgresTransactionPersistence};
+use crate::repository::transaction::balance_repo::{BalanceRepository, DbBalanceRepository, PostgresBalancePersistence};
+use crate::service::transaction::transaction_service::{TransactionService, DefaultTransactionService};
+use crate::service::transaction::balance_service::{BalanceService, DefaultBalanceService};
+use crate::service::transaction::payment_service::{PaymentService, MockPaymentService};
 
 struct AppState {
     db_pool: Arc<sqlx::PgPool>,
     auth_service: Arc<AuthService>,
+    transaction_service: Arc<dyn TransactionService + Send + Sync>,
 }
 
 fn cors_fairing() -> rocket_cors::Cors {
@@ -67,19 +71,43 @@ fn rocket() -> Rocket<Build> {
                     .with_token_repository(token_repository)
                     .with_user_repository(user_repository.clone())
             );
+
+            let transaction_persistence = PostgresTransactionPersistence::new((*db_pool_arc).clone());
+            let transaction_repository: Arc<dyn TransactionRepository + Send + Sync> = Arc::new(DbTransactionRepository::new(transaction_persistence));
+            
+            let balance_persistence = PostgresBalancePersistence::new((*db_pool_arc).clone());
+            let balance_repository: Arc<dyn BalanceRepository + Send + Sync> = Arc::new(DbBalanceRepository::new(balance_persistence));
+            
+            let balance_service: Arc<dyn BalanceService + Send + Sync> = Arc::new(DefaultBalanceService::new(balance_repository.clone()));
+            
+            let payment_service: Arc<dyn PaymentService + Send + Sync> = Arc::new(MockPaymentService::new()); 
+
+            let transaction_service: Arc<dyn TransactionService + Send + Sync> = Arc::new(DefaultTransactionService::new(
+                transaction_repository.clone(),
+                balance_service.clone(),
+                payment_service.clone(),
+            ));
             
             let state = AppState {
-                db_pool: db_pool_arc,
+                db_pool: db_pool_arc.clone(),
                 auth_service: auth_service.clone(),
+                transaction_service: transaction_service.clone(),
             };
             
             rocket
                 .manage(state)
                 .manage(user_repository.clone())
                 .manage(auth_service.clone())
+                .manage(transaction_service.clone())
+                .manage(balance_service.clone())
+                .manage(payment_service.clone())
+                .manage(transaction_repository.clone())
+                .manage(balance_repository.clone())
+                .manage(db_pool_arc)
         }))
         .attach(cors_fairing())
         .mount("/api", auth_routes())
+        .mount("/api/transactions", transaction_routes())
         .mount("/", routes![all_options])
 }
 
