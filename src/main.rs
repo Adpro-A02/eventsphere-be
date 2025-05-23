@@ -14,10 +14,6 @@ use std::env;
 use sqlx::postgres::PgPoolOptions;
 use rocket::fairing::AdHoc;
 
-use crate::repository::event::InMemoryEventRepository;
-use crate::service::event::event_service::EventService;
-use crate::controller::event::event_controller::{DynEventService, EventServiceTrait};
-
 use crate::repository::user::user_repo::{UserRepository, DbUserRepository, PostgresUserRepository};
 use crate::repository::auth::token_repo::{TokenRepository, PostgresRefreshTokenRepository};
 use crate::service::auth::auth_service::AuthService;
@@ -25,7 +21,6 @@ use crate::controller::auth::auth_controller::auth_routes;
 
 struct AppState {
     db_pool: Arc<sqlx::PgPool>,
-    event_service: DynEventService,
     auth_service: Arc<AuthService>,
 }
 
@@ -43,10 +38,6 @@ fn rocket() -> Rocket<Build> {
                 .expect("Failed to create database pool");
                 
             let db_pool_arc = Arc::new(db_pool);
-            
-            let repository = Arc::new(InMemoryEventRepository::new());
-            let service = Arc::new(EventService::new(repository.clone()));
-            let dyn_service = service as DynEventService;
 
             let user_persistence = PostgresUserRepository::new(db_pool_arc.clone());
             let user_repository: Arc<dyn UserRepository> = Arc::new(DbUserRepository::new(user_persistence));
@@ -64,7 +55,6 @@ fn rocket() -> Rocket<Build> {
             
             let state = AppState {
                 db_pool: db_pool_arc,
-                event_service: dyn_service,
                 auth_service: auth_service.clone(),
             };
             
