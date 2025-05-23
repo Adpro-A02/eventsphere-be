@@ -8,16 +8,26 @@ use uuid::Uuid;
 
 use crate::model::transaction::{Transaction, TransactionStatus};
 
+#[async_trait]
 pub trait TransactionPersistenceStrategy {
-    fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>>;
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>>;
-    fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>>;
-    fn update_status(
+    async fn save(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>>;
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>>;
+    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>>;
-    fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>>;
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
 
 pub struct InMemoryTransactionPersistence {
@@ -32,20 +42,29 @@ impl InMemoryTransactionPersistence {
     }
 }
 
+#[async_trait]
 impl TransactionPersistenceStrategy for InMemoryTransactionPersistence {
-    fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>> {
+    async fn save(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.write().unwrap();
         let transaction_clone = transaction.clone();
         transactions.insert(transaction.id, transaction_clone.clone());
         Ok(transaction_clone)
     }
-
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>> {
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>> {
         let transactions = self.transactions.read().unwrap();
         Ok(transactions.get(&id).cloned())
     }
 
-    fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>> {
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>> {
         let transactions = self.transactions.read().unwrap();
         let user_transactions = transactions
             .values()
@@ -55,11 +74,11 @@ impl TransactionPersistenceStrategy for InMemoryTransactionPersistence {
         Ok(user_transactions)
     }
 
-    fn update_status(
+    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>> {
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.write().unwrap();
 
         if let Some(transaction) = transactions.get_mut(&id) {
@@ -71,7 +90,7 @@ impl TransactionPersistenceStrategy for InMemoryTransactionPersistence {
         }
     }
 
-    fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>> {
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.write().unwrap();
 
         if transactions.remove(&id).is_some() {
@@ -82,16 +101,26 @@ impl TransactionPersistenceStrategy for InMemoryTransactionPersistence {
     }
 }
 
+#[async_trait]
 pub trait TransactionRepository {
-    fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>>;
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>>;
-    fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>>;
-    fn update_status(
+    async fn save(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>>;
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>>;
+    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>>;
-    fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>>;
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
 
 pub struct DbTransactionRepository<S: TransactionPersistenceStrategy> {
@@ -104,29 +133,41 @@ impl<S: TransactionPersistenceStrategy> DbTransactionRepository<S> {
     }
 }
 
-impl<S: TransactionPersistenceStrategy> TransactionRepository for DbTransactionRepository<S> {
-    fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>> {
-        self.strategy.save(transaction)
+#[async_trait]
+impl<S: TransactionPersistenceStrategy + Send + Sync> TransactionRepository
+    for DbTransactionRepository<S>
+{
+    async fn save(
+        &self,
+        transaction: &Transaction,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        self.strategy.save(transaction).await
     }
 
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>> {
-        self.strategy.find_by_id(id)
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>> {
+        self.strategy.find_by_id(id).await
     }
 
-    fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>> {
-        self.strategy.find_by_user(user_id)
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>> {
+        self.strategy.find_by_user(user_id).await
     }
 
-    fn update_status(
+    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>> {
-        self.strategy.update_status(id, status)
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        self.strategy.update_status(id, status).await
     }
 
-    fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>> {
-        self.strategy.delete(id)
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.strategy.delete(id).await
     }
 }
 
@@ -141,21 +182,11 @@ impl PostgresTransactionPersistence {
 }
 
 #[async_trait]
-pub trait AsyncTransactionPersistenceStrategy {
-    async fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>>;
-    async fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>>;
-    async fn update_status(
+impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
+    async fn save(
         &self,
-        id: Uuid,
-        status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>>;
-    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>>;
-}
-
-#[async_trait]
-impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
-    async fn save(&self, transaction: &Transaction) -> Result<Transaction, Box<dyn Error>> {
+        transaction: &Transaction,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let query = "INSERT INTO transactions (id, user_id, ticket_id, amount, description, payment_method, external_reference, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *";
         let row = sqlx::query(query)
             .bind(transaction.id)
@@ -170,7 +201,7 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
             .bind(transaction.updated_at)
             .fetch_one(&self.pool)
             .await?;
-            
+
         let saved_transaction = Transaction {
             id: row.get("id"),
             user_id: row.get("user_id"),
@@ -187,9 +218,15 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
         Ok(saved_transaction)
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>> {
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>> {
         let query = "SELECT * FROM transactions WHERE id = $1";
-        let row = sqlx::query(query).bind(id).fetch_optional(&self.pool).await?;
+        let row = sqlx::query(query)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         if let Some(row) = row {
             let transaction = Transaction {
                 id: row.get("id"),
@@ -208,11 +245,16 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
             Ok(None)
         }
     }
-
-    async fn find_by_user(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>> {
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>> {
         let query = "SELECT * FROM transactions WHERE user_id = $1";
-        let rows = sqlx::query(query).bind(user_id).fetch_all(&self.pool).await?;
-        
+        let rows = sqlx::query(query)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
+
         let transactions = rows
             .iter()
             .map(|row| Transaction {
@@ -228,7 +270,7 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
                 updated_at: row.get("updated_at"),
             })
             .collect();
-            
+
         Ok(transactions)
     }
 
@@ -236,15 +278,15 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
         &self,
         id: Uuid,
         status: TransactionStatus,
-    ) -> Result<Transaction, Box<dyn Error>> {
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
         let query = "UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *";
-        
+
         let row = sqlx::query(query)
             .bind(status.to_string())
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
-            
+
         match row {
             Some(row) => {
                 let transaction = Transaction {
@@ -260,19 +302,15 @@ impl AsyncTransactionPersistenceStrategy for PostgresTransactionPersistence {
                     updated_at: row.get("updated_at"),
                 };
                 Ok(transaction)
-            },
+            }
             None => Err("Transaction not found".into()),
         }
     }
-
-    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error>> {
+    async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         let query = "DELETE FROM transactions WHERE id = $1";
-        
-        let result = sqlx::query(query)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-            
+
+        let result = sqlx::query(query).bind(id).execute(&self.pool).await?;
+
         if result.rows_affected() > 0 {
             Ok(())
         } else {
