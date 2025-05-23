@@ -1,62 +1,79 @@
+use async_trait::async_trait;
+use chrono::Utc;
 use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::Utc;
 
 use crate::model::transaction::{Transaction, TransactionStatus};
 use crate::repository::transaction::transaction_repo::TransactionRepository;
 use crate::service::transaction::balance_service::BalanceService;
 use crate::service::transaction::payment_service::PaymentService;
 
+#[async_trait]
 pub trait TransactionService {
-    fn create_transaction(
+    async fn create_transaction(
         &self,
         user_id: Uuid,
         ticket_id: Option<Uuid>,
         amount: i64,
         description: String,
         payment_method: String,
-    ) -> Result<Transaction, Box<dyn Error>>;
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>>;
 
-    fn process_payment(
+    async fn process_payment(
         &self,
         transaction_id: Uuid,
         external_reference: Option<String>,
-    ) -> Result<Transaction, Box<dyn Error>>;
-    
-    fn validate_payment(&self, transaction_id: Uuid) -> Result<bool, Box<dyn Error>>;
-    fn refund_transaction(&self, transaction_id: Uuid) -> Result<Transaction, Box<dyn Error>>;
-    fn get_transaction(&self, transaction_id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>>;
-    fn get_user_transactions(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>>;
-    
-    fn add_funds_to_balance(
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>>;
+
+    async fn validate_payment(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<bool, Box<dyn Error + Send + Sync + 'static>>;
+    async fn refund_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>>;
+    async fn get_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync + 'static>>;
+    async fn get_user_transactions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync + 'static>>;
+
+    async fn add_funds_to_balance(
         &self,
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error>>;
-    
-    fn withdraw_funds(
+    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;
+
+    async fn withdraw_funds(
         &self,
         user_id: Uuid,
         amount: i64,
         description: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error>>;
+    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;
 
-    fn delete_transaction(&self, transaction_id: Uuid) -> Result<(), Box<dyn Error>>;
+    async fn delete_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<(), Box<dyn Error + Send + Sync + 'static>>;
 }
 
 pub struct DefaultTransactionService {
-    transaction_repository: Arc<dyn TransactionRepository>,
-    balance_service: Arc<dyn BalanceService>,
-    payment_service: Arc<dyn PaymentService>,
+    transaction_repository: Arc<dyn TransactionRepository + Send + Sync>,
+    balance_service: Arc<dyn BalanceService + Send + Sync>,
+    payment_service: Arc<dyn PaymentService + Send + Sync>,
 }
 
 impl DefaultTransactionService {
     pub fn new(
-        transaction_repository: Arc<dyn TransactionRepository>,
-        balance_service: Arc<dyn BalanceService>,
-        payment_service: Arc<dyn PaymentService>
+        transaction_repository: Arc<dyn TransactionRepository + Send + Sync>,
+        balance_service: Arc<dyn BalanceService + Send + Sync>,
+        payment_service: Arc<dyn PaymentService + Send + Sync>,
     ) -> Self {
         Self {
             transaction_repository,
@@ -66,173 +83,205 @@ impl DefaultTransactionService {
     }
 }
 
+#[async_trait]
 impl TransactionService for DefaultTransactionService {
-    fn create_transaction(
+    async fn create_transaction(
         &self,
         user_id: Uuid,
         ticket_id: Option<Uuid>,
         amount: i64,
         description: String,
         payment_method: String,
-    ) -> Result<Transaction, Box<dyn Error>> {
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Transaction amount must be positive".into());
         }
-        
-        let transaction = Transaction::new(
-            user_id,
-            ticket_id,
-            amount,
-            description,
-            payment_method,
-        );
-        
-        self.transaction_repository.save(&transaction)
+
+        let transaction = Transaction::new(user_id, ticket_id, amount, description, payment_method);
+
+        self.transaction_repository.save(&transaction).await
     }
-    
-    fn process_payment(
+
+    async fn process_payment(
         &self,
         transaction_id: Uuid,
         external_reference: Option<String>,
-    ) -> Result<Transaction, Box<dyn Error>> {
-        let transaction = match self.transaction_repository.find_by_id(transaction_id)? {
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>> {
+        let transaction = match self
+            .transaction_repository
+            .find_by_id(transaction_id)
+            .await?
+        {
             Some(t) => t,
             None => return Err("Transaction not found".into()),
         };
-        
+
         if transaction.is_finalized() {
             return Err("Transaction is already finalized".into());
         }
-        
-        // If external reference is provided, use it directly
+
         if let Some(ref_id) = external_reference {
-            let mut updated = self.transaction_repository.update_status(
-                transaction_id, 
-                TransactionStatus::Success
-            )?;
+            let mut updated = self
+                .transaction_repository
+                .update_status(transaction_id, TransactionStatus::Success)
+                .await?;
             updated.external_reference = Some(ref_id);
-            return self.transaction_repository.save(&updated);
+            return self.transaction_repository.save(&updated).await;
         }
-        
-        let (success, reference) = self.payment_service.process_payment(&transaction)?;
-        
-        let status = if success { 
-            TransactionStatus::Success 
-        } else { 
-            TransactionStatus::Failed 
+
+        let (success, reference) = self.payment_service.process_payment(&transaction).await?;
+
+        let status = if success {
+            TransactionStatus::Success
+        } else {
+            TransactionStatus::Failed
         };
-        
-        let mut updated_transaction = self.transaction_repository.update_status(transaction_id, status)?;
+
+        let mut updated_transaction = self
+            .transaction_repository
+            .update_status(transaction_id, status)
+            .await?;
         updated_transaction.external_reference = reference;
         updated_transaction.updated_at = Utc::now();
-        
-        self.transaction_repository.save(&updated_transaction)
+
+        self.transaction_repository.save(&updated_transaction).await
     }
-    
-    fn validate_payment(&self, transaction_id: Uuid) -> Result<bool, Box<dyn Error>> {
-        let transaction = match self.transaction_repository.find_by_id(transaction_id)? {
+
+    async fn validate_payment(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<bool, Box<dyn Error + Send + Sync + 'static>> {
+        let transaction = match self
+            .transaction_repository
+            .find_by_id(transaction_id)
+            .await?
+        {
             Some(t) => t,
             None => return Err("Transaction not found".into()),
         };
-        
+
         Ok(transaction.status == TransactionStatus::Success)
     }
-    
-    fn refund_transaction(&self, transaction_id: Uuid) -> Result<Transaction, Box<dyn Error>> {
-        let mut transaction = match self.transaction_repository.find_by_id(transaction_id)? {
+
+    async fn refund_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>> {
+        let mut transaction = match self
+            .transaction_repository
+            .find_by_id(transaction_id)
+            .await?
+        {
             Some(t) => t,
             None => return Err("Transaction not found".into()),
         };
-        
-        transaction.refund().map_err(|e| -> Box<dyn Error> { e.into() })?;
-        
-        self.transaction_repository.update_status(transaction_id, TransactionStatus::Refunded)
+
+        transaction
+            .refund()
+            .map_err(|e| -> Box<dyn Error + Send + Sync + 'static> { e.into() })?;
+
+        self.transaction_repository
+            .update_status(transaction_id, TransactionStatus::Refunded)
+            .await
     }
-    
-    fn get_transaction(&self, transaction_id: Uuid) -> Result<Option<Transaction>, Box<dyn Error>> {
-        self.transaction_repository.find_by_id(transaction_id)
+
+    async fn get_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync + 'static>> {
+        self.transaction_repository.find_by_id(transaction_id).await
     }
-    
-    fn get_user_transactions(&self, user_id: Uuid) -> Result<Vec<Transaction>, Box<dyn Error>> {
-        self.transaction_repository.find_by_user(user_id)
+
+    async fn get_user_transactions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync + 'static>> {
+        self.transaction_repository.find_by_user(user_id).await
     }
-    
-    fn add_funds_to_balance(
+
+    async fn add_funds_to_balance(
         &self,
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error>> {
+    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
-        
-        let transaction = self.create_transaction(
-            user_id,
-            None,
-            amount,
-            "Add funds to balance".to_string(),
-            payment_method,
-        )?;
-        
-        let processed_transaction = self.process_payment(transaction.id, None)?;
-        
+
+        let transaction = self
+            .create_transaction(
+                user_id,
+                None,
+                amount,
+                "Add funds to balance".to_string(),
+                payment_method,
+            )
+            .await?;
+
+        let processed_transaction = self.process_payment(transaction.id, None).await?;
+
         if processed_transaction.status != TransactionStatus::Success {
             return Err("Payment processing failed".into());
         }
-        
-        let new_balance = self.balance_service.add_funds(user_id, amount)?;
-        
+
+        let new_balance = self.balance_service.add_funds(user_id, amount).await?;
+
         Ok((processed_transaction, new_balance))
     }
-    
-    fn withdraw_funds(
+
+    async fn withdraw_funds(
         &self,
         user_id: Uuid,
         amount: i64,
         description: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error>> {
+    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
-        
-        // Check if user has sufficient funds first
-        let balance = self.balance_service.get_or_create_balance(user_id)?;
+
+        let balance = self.balance_service.get_or_create_balance(user_id).await?;
         if balance.amount < amount {
             return Err("Insufficient funds".into());
         }
-        
-        let transaction = self.create_transaction(
-            user_id,
-            None,
-            amount,
-            description,
-            "Balance".to_string(),
-        )?;
-        
-        let mut processed_transaction = self.transaction_repository.update_status(
-            transaction.id,
-            TransactionStatus::Success,
-        )?;
-        
+
+        let transaction = self
+            .create_transaction(user_id, None, amount, description, "Balance".to_string())
+            .await?;
+
+        let mut processed_transaction = self
+            .transaction_repository
+            .update_status(transaction.id, TransactionStatus::Success)
+            .await?;
+
         processed_transaction.amount = -amount;
-        let processed_transaction = self.transaction_repository.save(&processed_transaction)?;
-        
-        let new_balance = self.balance_service.withdraw_funds(user_id, amount)?;
-        
+        let processed_transaction = self
+            .transaction_repository
+            .save(&processed_transaction)
+            .await?;
+
+        let new_balance = self.balance_service.withdraw_funds(user_id, amount).await?;
+
         Ok((processed_transaction, new_balance))
     }
 
-    fn delete_transaction(&self, transaction_id: Uuid) -> Result<(), Box<dyn Error>> {
-        let transaction = match self.transaction_repository.find_by_id(transaction_id)? {
+    async fn delete_transaction(
+        &self,
+        transaction_id: Uuid,
+    ) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+        let transaction = match self
+            .transaction_repository
+            .find_by_id(transaction_id)
+            .await?
+        {
             Some(t) => t,
             None => return Err("Transaction not found".into()),
         };
-        
+
         if transaction.status != TransactionStatus::Pending {
             return Err("Cannot delete a processed transaction".into());
         }
-        
-        self.transaction_repository.delete(transaction_id)
+
+        self.transaction_repository.delete(transaction_id).await
     }
 }
