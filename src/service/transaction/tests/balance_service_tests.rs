@@ -1,6 +1,5 @@
 use crate::service::transaction::tests::common::*;
 use uuid::Uuid;
-use crate::model::transaction::TransactionStatus;
 use crate::service::transaction::TransactionService;
 use tokio::runtime::Runtime;
 
@@ -107,8 +106,7 @@ mod tests {
         let balance = rt.block_on(balance_service.get_or_create_balance(user_id)).unwrap();
         assert_eq!(balance.amount, initial_amount);
     }
-    
-    #[test]
+      #[test]
     fn test_add_funds_to_balance_through_transaction() {
         let rt = Runtime::new().unwrap();
         let service = create_transaction_service();
@@ -122,12 +120,10 @@ mod tests {
         ));
         
         assert!(result.is_ok());
-        let (transaction, balance) = result.unwrap();
-        assert_eq!(transaction.status, TransactionStatus::Success);
+        let balance = result.unwrap();
         assert_eq!(balance, amount);
     }
-      
-    #[test]
+        #[test]
     fn test_withdraw_funds_through_transaction() {
         let rt = Runtime::new().unwrap();
         let service = create_transaction_service();
@@ -148,9 +144,7 @@ mod tests {
         ));
         
         assert!(result.is_ok());
-        let (transaction, balance) = result.unwrap();
-        assert_eq!(transaction.amount, -withdraw_amount);
-        assert_eq!(transaction.status, TransactionStatus::Success);
+        let balance = result.unwrap();
         assert_eq!(balance, initial_amount - withdraw_amount);
     }
 }
