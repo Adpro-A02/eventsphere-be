@@ -187,16 +187,15 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         &self,
         transaction: &Transaction,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
-        let query = "INSERT INTO transactions (id, user_id, ticket_id, amount, description, payment_method, external_reference, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *";
+        let query = "INSERT INTO transactions (id, user_id, ticket_id, amount, description, payment_method, external_reference, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::transaction_status, $9, $10) RETURNING *";
         let row = sqlx::query(query)
             .bind(transaction.id)
             .bind(transaction.user_id)
             .bind(transaction.ticket_id)
-            .bind(transaction.amount)
-            .bind(&transaction.description)
+            .bind(transaction.amount)            .bind(&transaction.description)
             .bind(&transaction.payment_method)
             .bind(&transaction.external_reference)
-            .bind(transaction.status.to_string())
+            .bind(transaction.status.to_string().to_lowercase())
             .bind(transaction.created_at)
             .bind(transaction.updated_at)
             .fetch_one(&self.pool)
@@ -272,17 +271,15 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             .collect();
 
         Ok(transactions)
-    }
-
-    async fn update_status(
+    }    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
-        let query = "UPDATE transactions SET status = $1 WHERE id = $2 RETURNING *";
+        let query = "UPDATE transactions SET status = $1::transaction_status WHERE id = $2 RETURNING *";
 
         let row = sqlx::query(query)
-            .bind(status.to_string())
+            .bind(status.to_string().to_lowercase())
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
