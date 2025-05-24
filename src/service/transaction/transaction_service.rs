@@ -30,14 +30,17 @@ pub trait TransactionService {
         &self,
         transaction_id: Uuid,
     ) -> Result<bool, Box<dyn Error + Send + Sync + 'static>>;
+
     async fn refund_transaction(
         &self,
         transaction_id: Uuid,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync + 'static>>;
+
     async fn get_transaction(
         &self,
         transaction_id: Uuid,
     ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync + 'static>>;
+
     async fn get_user_transactions(
         &self,
         user_id: Uuid,
@@ -48,17 +51,19 @@ pub trait TransactionService {
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;    async fn withdraw_funds(
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>>;
+
+    async fn withdraw_funds(
         &self,
         user_id: Uuid,
         amount: i64,
         description: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>>;
 
     async fn get_user_balance(
         &self,
         user_id: Uuid,
-    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>>;
+    ) -> Result<crate::model::transaction::Balance, Box<dyn Error + Send + Sync + 'static>>;
 
     async fn delete_transaction(
         &self,
@@ -201,36 +206,19 @@ impl TransactionService for DefaultTransactionService {
     ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync + 'static>> {
         self.transaction_repository.find_by_user(user_id).await
     }
-
     async fn add_funds_to_balance(
         &self,
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
 
-        let transaction = self
-            .create_transaction(
-                user_id,
-                None,
-                amount,
-                "Add funds to balance".to_string(),
-                payment_method,
-            )
-            .await?;
-
-        let processed_transaction = self.process_payment(transaction.id, None).await?;
-
-        if processed_transaction.status != TransactionStatus::Success {
-            return Err("Payment processing failed".into());
-        }
-
         let new_balance = self.balance_service.add_funds(user_id, amount).await?;
 
-        Ok((processed_transaction, new_balance))
+        Ok(new_balance)
     }
 
     async fn withdraw_funds(
@@ -238,7 +226,7 @@ impl TransactionService for DefaultTransactionService {
         user_id: Uuid,
         amount: i64,
         description: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
@@ -248,29 +236,15 @@ impl TransactionService for DefaultTransactionService {
             return Err("Insufficient funds".into());
         }
 
-        let transaction = self
-            .create_transaction(user_id, None, amount, description, "Balance".to_string())
-            .await?;
+        let new_balance = self.balance_service.withdraw_funds(user_id, amount).await?;
 
-        let mut processed_transaction = self
-            .transaction_repository
-            .update_status(transaction.id, TransactionStatus::Success)
-            .await?;
-
-        processed_transaction.amount = -amount;
-        let processed_transaction = self
-            .transaction_repository
-            .save(&processed_transaction)
-            .await?;
-
-        let new_balance = self.balance_service.withdraw_funds(user_id, amount).await?;        Ok((processed_transaction, new_balance))
+        Ok(new_balance)
     }
-
     async fn get_user_balance(
         &self,
         user_id: Uuid,
-    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>> {
-        self.balance_service.get_user_balance(user_id).await
+    ) -> Result<crate::model::transaction::Balance, Box<dyn Error + Send + Sync + 'static>> {
+        self.balance_service.get_or_create_balance(user_id).await
     }
 
     async fn delete_transaction(
