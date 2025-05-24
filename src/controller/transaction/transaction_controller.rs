@@ -119,7 +119,6 @@ pub struct WithdrawFundsRequest {
 
 #[derive(Debug, Serialize)]
 pub struct BalanceResponse {
-    pub transaction: Transaction,
     pub balance: i64,
 }
 
@@ -130,15 +129,25 @@ pub fn transaction_routes() -> Vec<Route> {
         validate_payment_handler,
         refund_transaction_handler,
         get_transaction_handler,
-        get_user_transactions_handler,
-        get_user_balance_handler,
-        add_funds_handler,
-        withdraw_funds_handler,
         delete_transaction_handler
     ]
 }
 
-#[post("/transactions", data = "<req>")]
+pub fn balance_routes() -> Vec<Route> {
+    routes![
+        add_funds_handler,
+        withdraw_funds_handler
+    ]
+}
+
+pub fn user_routes() -> Vec<Route> {
+    routes![
+        get_user_transactions_handler,
+        get_user_balance_handler
+    ]
+}
+
+#[post("/", data = "<req>")]
 pub async fn create_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<CreateTransactionRequest>,
@@ -178,7 +187,7 @@ pub async fn create_transaction_handler(
     }
 }
 
-#[put("/transactions/<transaction_id>/process", data = "<req>")]
+#[put("/<transaction_id>/process", data = "<req>")]
 pub async fn process_payment_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
@@ -220,7 +229,7 @@ pub async fn process_payment_handler(
     }
 }
 
-#[get("/transactions/<transaction_id>/validate")]
+#[get("/<transaction_id>/validate")]
 pub async fn validate_payment_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
@@ -258,7 +267,7 @@ pub async fn validate_payment_handler(
     }
 }
 
-#[put("/transactions/<transaction_id>/refund")]
+#[put("/<transaction_id>/refund")]
 pub async fn refund_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
@@ -296,7 +305,7 @@ pub async fn refund_transaction_handler(
     }
 }
 
-#[get("/transactions/<transaction_id>")]
+#[get("/<transaction_id>")]
 pub async fn get_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
@@ -326,7 +335,7 @@ pub async fn get_transaction_handler(
     }
 }
 
-#[get("/users/<user_id>/transactions")]
+#[get("/<user_id>/transactions")]
 pub async fn get_user_transactions_handler(
     token: crate::middleware::auth::JwtToken,
     user_id: UuidParam,
@@ -356,7 +365,7 @@ pub async fn get_user_transactions_handler(
         }    }
 }
 
-#[get("/users/<user_id>/balance")]
+#[get("/<user_id>/balance")]
 pub async fn get_user_balance_handler(
     token: crate::middleware::auth::JwtToken,
     user_id: UuidParam,
@@ -370,14 +379,11 @@ pub async fn get_user_balance_handler(
     // Verify the requested user_id matches the authenticated user or user is admin
     if user_id.0 != token_user_id && !token.is_admin() {
         return Err(Status::Forbidden);
-    }
-
-    match service.get_user_balance(user_id.0).await {
-        Ok(Some(balance)) => Ok(ApiResponse::success(
+    }    match service.get_user_balance(user_id.0).await {
+        Ok(balance) => Ok(ApiResponse::success(
             "User balance found",
             balance,
         )),
-        Ok(None) => Ok(ApiResponse::error(404, "User balance not found")),
         Err(e) => {
             eprintln!("Failed to get user balance: {:?}", e);
             Ok(ApiResponse::error(
@@ -388,7 +394,7 @@ pub async fn get_user_balance_handler(
     }
 }
 
-#[post("/balance/add", data = "<req>")]
+#[post("/add", data = "<req>")]
 pub async fn add_funds_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<AddFundsRequest>,
@@ -402,15 +408,12 @@ pub async fn add_funds_handler(
     
     if token_user_id != req.user_id && !token.is_admin() {
         return Err(Status::Forbidden);
-    }
-
-    match service
+    }    match service
         .add_funds_to_balance(req.user_id, req.amount, req.payment_method.clone())
         .await
     {
-        Ok((transaction, balance)) => {
+        Ok(balance) => {
             let response = BalanceResponse {
-                transaction,
                 balance,
             };
             Ok(ApiResponse::success("Funds added successfully", response))
@@ -425,7 +428,7 @@ pub async fn add_funds_handler(
     }
 }
 
-#[post("/balance/withdraw", data = "<req>")]
+#[post("/withdraw", data = "<req>")]
 pub async fn withdraw_funds_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<WithdrawFundsRequest>,
@@ -439,15 +442,12 @@ pub async fn withdraw_funds_handler(
     
     if token_user_id != req.user_id && !token.is_admin() {
         return Err(Status::Forbidden);
-    }
-
-    match service
+    }    match service
         .withdraw_funds(req.user_id, req.amount, req.description.clone())
         .await
     {
-        Ok((transaction, balance)) => {
+        Ok(balance) => {
             let response = BalanceResponse {
-                transaction,
                 balance,
             };
             Ok(ApiResponse::success(
@@ -465,7 +465,7 @@ pub async fn withdraw_funds_handler(
     }
 }
 
-#[delete("/transactions/<transaction_id>")]
+#[delete("/<transaction_id>")]
 pub async fn delete_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
