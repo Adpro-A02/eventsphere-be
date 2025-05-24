@@ -185,9 +185,15 @@ impl TransactionService for MockTransactionService {
             new_balance_amount = balance_entry
                 .withdraw(amount)
                 .map_err(|e| Box::<dyn Error + Send + Sync + 'static>::from(e.to_string()))?;
-        }
+        }        Ok((transaction, new_balance_amount))
+    }
 
-        Ok((transaction, new_balance_amount))
+    async fn get_user_balance(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>> {
+        let balances = self.balances.lock().unwrap();
+        Ok(balances.get(&user_id).cloned())
     }
 
     async fn delete_transaction(

@@ -48,14 +48,17 @@ pub trait TransactionService {
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;
-
-    async fn withdraw_funds(
+    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;    async fn withdraw_funds(
         &self,
         user_id: Uuid,
         amount: i64,
         description: String,
     ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>>;
+
+    async fn get_user_balance(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>>;
 
     async fn delete_transaction(
         &self,
@@ -260,9 +263,14 @@ impl TransactionService for DefaultTransactionService {
             .save(&processed_transaction)
             .await?;
 
-        let new_balance = self.balance_service.withdraw_funds(user_id, amount).await?;
+        let new_balance = self.balance_service.withdraw_funds(user_id, amount).await?;        Ok((processed_transaction, new_balance))
+    }
 
-        Ok((processed_transaction, new_balance))
+    async fn get_user_balance(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>> {
+        self.balance_service.get_user_balance(user_id).await
     }
 
     async fn delete_transaction(
