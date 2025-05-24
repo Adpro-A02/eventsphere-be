@@ -11,14 +11,14 @@ pub enum TransactionStatus {
     Refunded,
 }
 
-impl TransactionStatus {
+impl TransactionStatus {    
     pub fn from_string(status: &str) -> Self {
-        match status {
-            "Pending" => TransactionStatus::Pending,
-            "Success" => TransactionStatus::Success,
-            "Failed" => TransactionStatus::Failed,
-            "Refunded" => TransactionStatus::Refunded,
-            _ => TransactionStatus::Pending, // Default case
+        match status.to_lowercase().as_str() {
+            "pending" => TransactionStatus::Pending,
+            "success" => TransactionStatus::Success,
+            "failed" => TransactionStatus::Failed,
+            "refunded" => TransactionStatus::Refunded,
+            _ => TransactionStatus::Pending,
         }
     }
 }
