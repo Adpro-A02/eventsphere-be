@@ -6,12 +6,12 @@ use uuid::Uuid;
 use warp::http::StatusCode;
 use warp::{Filter, Rejection, Reply};
 
-use crate::model::transaction::{Balance, Transaction, TransactionStatus};
-use crate::service::transaction::TransactionService;
 use crate::controller::transaction::transaction_controller::{
     AddFundsRequest, ApiResponse, BalanceResponse, CreateTransactionRequest, ProcessPaymentRequest,
     WithdrawFundsRequest,
 };
+use crate::model::transaction::{Balance, Transaction, TransactionStatus};
+use crate::service::transaction::TransactionService;
 
 struct MockTransactionService {
     transactions: Mutex<HashMap<Uuid, Transaction>>,
@@ -114,40 +114,29 @@ impl TransactionService for MockTransactionService {
             .cloned()
             .collect())
     }
-
     async fn add_funds_to_balance(
         &self,
         user_id: Uuid,
         amount: i64,
         payment_method: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
-        let transaction = self
-            .create_transaction(
-                user_id,
-                None,
-                amount,
-                "Add funds to balance".to_string(),
-                payment_method,
-            )
-            .await?;
-        let processed_transaction = self.process_payment(transaction.id, None).await?;
+
         let mut balances = self.balances.lock().unwrap();
         let balance = balances
             .entry(user_id)
             .or_insert_with(|| Balance::new(user_id));
         let new_amount = balance.add_funds(amount).map_err(|e| e.to_string())?;
-        Ok((processed_transaction, new_amount))
+        Ok(new_amount)
     }
-
     async fn withdraw_funds(
         &self,
         user_id: Uuid,
         amount: i64,
         description: String,
-    ) -> Result<(Transaction, i64), Box<dyn Error + Send + Sync + 'static>> {
+    ) -> Result<i64, Box<dyn Error + Send + Sync + 'static>> {
         if amount <= 0 {
             return Err("Amount must be positive".into());
         }
@@ -162,19 +151,6 @@ impl TransactionService for MockTransactionService {
             }
         }
 
-        let mut transaction = self
-            .create_transaction(user_id, None, amount, description, "Balance".to_string())
-            .await?;
-        transaction.amount = -amount;
-
-        transaction.status = TransactionStatus::Success;
-        transaction.updated_at = Utc::now();
-
-        {
-            let mut transactions_lock = self.transactions.lock().unwrap();
-            transactions_lock.insert(transaction.id, transaction.clone()); // Save the updated transaction
-        }
-
         let new_balance_amount;
         {
             let mut balances_guard = self.balances.lock().unwrap();
@@ -185,15 +161,22 @@ impl TransactionService for MockTransactionService {
             new_balance_amount = balance_entry
                 .withdraw(amount)
                 .map_err(|e| Box::<dyn Error + Send + Sync + 'static>::from(e.to_string()))?;
-        }        Ok((transaction, new_balance_amount))
-    }
+        }
 
+        Ok(new_balance_amount)
+    }
     async fn get_user_balance(
         &self,
         user_id: Uuid,
-    ) -> Result<Option<crate::model::transaction::Balance>, Box<dyn Error + Send + Sync + 'static>> {
+    ) -> Result<crate::model::transaction::Balance, Box<dyn Error + Send + Sync + 'static>> {
         let balances = self.balances.lock().unwrap();
-        Ok(balances.get(&user_id).cloned())
+        match balances.get(&user_id).cloned() {
+            Some(balance) => Ok(balance),
+            None => {
+                let balance = crate::model::transaction::Balance::new(user_id);
+                Ok(balance)
+            }
+        }
     }
 
     async fn delete_transaction(
@@ -359,7 +342,7 @@ async fn get_transaction_handler_for_test(
                 status_code: StatusCode::NOT_FOUND.as_u16(),
                 message: "Transaction not found".to_string(),
                 data: None::<Transaction>,
-            }; // Ensure correct type for None
+            };
             Ok(warp::reply::with_status(
                 warp::reply::json(&response),
                 StatusCode::NOT_FOUND,
@@ -398,11 +381,8 @@ async fn add_funds_handler_for_test(
         .add_funds_to_balance(req.user_id, req.amount, req.payment_method)
         .await
     {
-        Ok((transaction, balance)) => {
-            let data = BalanceResponse {
-                transaction,
-                balance,
-            };
+        Ok(balance) => {
+            let data = BalanceResponse { balance };
             let response = ApiResponse {
                 success: true,
                 status_code: StatusCode::OK.as_u16(),
@@ -426,11 +406,8 @@ async fn withdraw_funds_handler_for_test(
         .withdraw_funds(req.user_id, req.amount, req.description)
         .await
     {
-        Ok((transaction, balance)) => {
-            let data = BalanceResponse {
-                transaction,
-                balance,
-            };
+        Ok(balance) => {
+            let data = BalanceResponse { balance };
             let response = ApiResponse {
                 success: true,
                 status_code: StatusCode::OK.as_u16(),
@@ -467,57 +444,117 @@ async fn delete_transaction_handler_for_test(
     }
 }
 
+async fn get_user_balance_handler_for_test(
+    user_id: Uuid,
+    service: Arc<MockTransactionService>,
+) -> Result<impl Reply, Rejection> {
+    match service.get_user_balance(user_id).await {
+        Ok(balance) => {
+            let response = ApiResponse {
+                success: true,
+                status_code: StatusCode::OK.as_u16(),
+                message: "User balance found".to_string(),
+                data: Some(balance),
+            };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                StatusCode::OK,
+            ))
+        }
+        Err(e) => build_error_reply(e.to_string(), StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 fn create_test_routes() -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let service = Arc::new(MockTransactionService::new());
 
     let with_service = warp::any().map(move || Arc::clone(&service));
 
     let create_transaction = warp::post()
+        .and(warp::path("api"))
         .and(warp::path("transactions"))
+        .and(warp::path::end())
         .and(warp::body::json())
         .and(with_service.clone())
         .and_then(create_transaction_handler_for_test);
 
-    let process_payment = warp::post()
-        .and(warp::path!("transactions" / Uuid / "process"))
+    let process_payment = warp::put()
+        .and(warp::path("api"))
+        .and(warp::path("transactions"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("process"))
+        .and(warp::path::end())
         .and(warp::body::json())
         .and(with_service.clone())
         .and_then(process_payment_handler_for_test);
 
     let validate_payment = warp::get()
-        .and(warp::path!("transactions" / Uuid / "validate"))
+        .and(warp::path("api"))
+        .and(warp::path("transactions"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("validate"))
+        .and(warp::path::end())
         .and(with_service.clone())
         .and_then(validate_payment_handler_for_test);
 
-    let refund_transaction = warp::post()
-        .and(warp::path!("transactions" / Uuid / "refund"))
+    let refund_transaction = warp::put()
+        .and(warp::path("api"))
+        .and(warp::path("transactions"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("refund"))
+        .and(warp::path::end())
         .and(with_service.clone())
         .and_then(refund_transaction_handler_for_test);
 
     let get_transaction = warp::get()
-        .and(warp::path!("transactions" / Uuid))
+        .and(warp::path("api"))
+        .and(warp::path("transactions"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path::end())
         .and(with_service.clone())
         .and_then(get_transaction_handler_for_test);
 
     let get_user_transactions = warp::get()
-        .and(warp::path!("users" / Uuid / "transactions"))
+        .and(warp::path("api"))
+        .and(warp::path("users"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("transactions"))
+        .and(warp::path::end())
         .and(with_service.clone())
         .and_then(get_user_transactions_handler_for_test);
 
+    let get_user_balance = warp::get()
+        .and(warp::path("api"))
+        .and(warp::path("users"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path("balance"))
+        .and(warp::path::end())
+        .and(with_service.clone())
+        .and_then(get_user_balance_handler_for_test);
+
     let add_funds = warp::post()
-        .and(warp::path!("balance" / "add"))
+        .and(warp::path("api"))
+        .and(warp::path("balance"))
+        .and(warp::path("add"))
+        .and(warp::path::end())
         .and(warp::body::json())
         .and(with_service.clone())
         .and_then(add_funds_handler_for_test);
 
     let withdraw_funds = warp::post()
-        .and(warp::path!("balance" / "withdraw"))
+        .and(warp::path("api"))
+        .and(warp::path("balance"))
+        .and(warp::path("withdraw"))
+        .and(warp::path::end())
         .and(warp::body::json())
         .and(with_service.clone())
         .and_then(withdraw_funds_handler_for_test);
 
     let delete_transaction = warp::delete()
-        .and(warp::path!("transactions" / Uuid))
+        .and(warp::path("api"))
+        .and(warp::path("transactions"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path::end())
         .and(with_service.clone())
         .and_then(delete_transaction_handler_for_test);
 
@@ -527,6 +564,7 @@ fn create_test_routes() -> impl Filter<Extract = impl Reply, Error = Rejection> 
         .or(refund_transaction)
         .or(get_transaction)
         .or(get_user_transactions)
+        .or(get_user_balance)
         .or(add_funds)
         .or(withdraw_funds)
         .or(delete_transaction)
