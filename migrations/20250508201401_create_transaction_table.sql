@@ -17,15 +17,6 @@ CREATE TABLE transactions (
     -- FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
 );
 
-CREATE TABLE balance (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
-    amount BIGINT NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE INDEX idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX idx_transactions_ticket_id ON transactions(ticket_id);
 CREATE INDEX idx_transactions_status ON transactions(status);
@@ -41,10 +32,5 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_transactions_updated_at
     BEFORE UPDATE ON transactions
-    FOR EACH ROW
-    EXECUTE FUNCTION update_at_column();
-
-CREATE TRIGGER update_balance_updated_at
-    BEFORE UPDATE ON balance
     FOR EACH ROW
     EXECUTE FUNCTION update_at_column();
