@@ -52,6 +52,9 @@ fn cors_fairing() -> rocket_cors::Cors {
             "http://localhost:3000",
             "https://eventsphere-fe.vercel.app",
             "https://eventsphere-fe.vercel.app/",
+            "https://eventsphere-fe.vercel.app/*",
+            "https://eventsphere-fe.vercel.app/api",
+            "https://eventsphere-fe.vercel.app/api/*",
         ]))
         .allow_credentials(true)
         .to_cors()
