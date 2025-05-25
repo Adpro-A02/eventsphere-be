@@ -20,7 +20,8 @@ scrape_configs:
     scheme: http
     scrape_interval: 15s
     scrape_timeout: 10s
-    honor_labels: true    params:
+    honor_labels: true
+    params:
       format: ['prometheus']
   
   - job_name: 'prometheus'
@@ -38,15 +39,3 @@ scrape_configs:
   - job_name: 'alertmanager'
     static_configs:
       - targets: ['alertmanager:9093']
-  
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['prometheus:9090']
-  
-  - job_name: 'grafana'
-    static_configs:
-      - targets: ['grafana:3000']
-      
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['db:5432']

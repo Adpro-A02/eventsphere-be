@@ -1,32 +1,33 @@
 version: '3.8'
 
-services:
+services:    
   eventsphere-be:
-    build: .
+    build:
+      context: .
+      args:
+        DATABASE_URL_ARG: ${DATABASE_URL:-postgresql://postgres.adlpwvpelbuntzrwrwvj:jQZSfNlXRNRtVHzF@postgres:5432/postgres}
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:Priapta123@db:5432/eventsphere}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres.adlpwvpelbuntzrwrwvj:jQZSfNlXRNRtVHzF@postgres:5432/postgres}
       - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_key}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev_jwt_refresh_secret}
       - PEPPER=${PEPPER:-dev_password_pepper}
       - RUST_LOG=${RUST_LOG:-info}
-    depends_on:
-      - db
     networks:
       - eventsphere-network
-
-  db:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-eventsphere}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-Priapta123}
+    depends_on:  # Added dependency
+      - postgres
+  postgres:      # Added PostgreSQL service
+    image: postgres:15
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres.adlpwvpelbuntzrwrwvj
+      POSTGRES_PASSWORD: jQZSfNlXRNRtVHzF
+      POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
     networks:
       - eventsphere-network
   prometheus:
@@ -45,7 +46,6 @@ services:
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
-      - '--alertmanager.url=http://alertmanager:9093'
     networks:
       - eventsphere-network
       
