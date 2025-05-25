@@ -42,7 +42,10 @@ struct AppState {
 }
 
 fn cors_fairing() -> rocket_cors::Cors {
-    let allowed_origins = AllowedOrigins::some_exact(&["http://localhost:3000"]);
+    let allowed_origins_str = env::var("ALLOWED_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let origins: Vec<&str> = allowed_origins_str.split(',').map(|s| s.trim()).collect();
+    let allowed_origins = AllowedOrigins::some_exact(&origins);
 
     CorsOptions {
         allowed_origins,
