@@ -42,13 +42,17 @@ struct AppState {
 }
 
 fn cors_fairing() -> rocket_cors::Cors {
-    let allowed_origins_str = env::var("ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3000,https://eventsphere-fe.vercel.app".to_string());
-    let origins: Vec<&str> = allowed_origins_str.split(',').map(|s| s.trim()).collect();
-    let allowed_origins = AllowedOrigins::some_exact(&origins);
+    // let allowed_origins_str = env::var("ALLOWED_ORIGINS")
+    //     .unwrap_or_else(|_| "http://localhost:3000,https://eventsphere-fe.vercel.app".to_string());
+    // let origins: Vec<&str> = allowed_origins_str.split(',').map(|s| s.trim()).collect();
+    // let allowed_origins = AllowedOrigins::some_exact(&origins);
 
     CorsOptions::default()
-        .allowed_origins(allowed_origins)
+        .allowed_origins(AllowedOrigins::some_exact(&[
+            "http://localhost:3000",
+            "https://eventsphere-fe.vercel.app",
+            "https://eventsphere-fe.vercel.app/",
+        ]))
         .allow_credentials(true)
         .to_cors()
         .expect("Failed to create CORS fairing")
@@ -133,10 +137,4 @@ fn rocket() -> Rocket<Build> {
         .mount("/api/transactions", transaction_routes())
         .mount("/api/balance", balance_routes())
         .mount("/api/users", user_routes())
-        .mount("/", routes![all_options])
-}
-
-#[options("/<_..>")]
-fn all_options() -> &'static str {
-    ""
 }
