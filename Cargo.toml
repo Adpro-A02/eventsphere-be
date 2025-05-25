@@ -42,3 +42,6 @@ rstest = "0.25.0"
 
 [features]
 redis = ["dep:redis"]
+
+[profile.release]
+debug = true
