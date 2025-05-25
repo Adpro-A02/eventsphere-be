@@ -1,0 +1,38 @@
+groups:
+- name: eventsphere-alerts
+  rules:
+  - alert: HighErrorRate
+    expr: sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High HTTP error rate"
+      description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes (threshold: 5%)."
+      
+  - alert: SlowResponseTime
+    expr: histogram_quantile(0.95, rate(http_request_duration_bucket[5m])) > 1000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Slow HTTP response times"
+      description: "95th percentile response time is {{ $value | humanizeDuration }} over the last 5 minutes (threshold: 1s)."
+      
+  - alert: HighDatabaseErrorRate
+    expr: sum(rate(sqlx_queries_total{status="error"}[5m])) / sum(rate(sqlx_queries_total[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High database error rate"
+      description: "Database error rate is {{ $value | humanizePercentage }} over the last 5 minutes (threshold: 5%)."
+      
+  - alert: ServiceDown
+    expr: up{job="eventsphere-be"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Service is down"
+      description: "The EventSphere backend service is not responding."
