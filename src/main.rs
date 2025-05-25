@@ -2,6 +2,7 @@
 extern crate rocket;
 
 mod controller;
+mod metrics;
 mod middleware;
 mod model;
 mod repository;
@@ -18,6 +19,7 @@ use crate::controller::auth::auth_controller::auth_routes;
 use crate::controller::transaction::transaction_controller::{
     balance_routes, transaction_routes, user_routes,
 };
+use crate::metrics::{MetricsFairing, MetricsState, metrics_routes};
 use crate::repository::auth::token_repo::{PostgresRefreshTokenRepository, TokenRepository};
 use crate::repository::transaction::balance_repo::{
     BalanceRepository, DbBalanceRepository, PostgresBalancePersistence,
@@ -35,25 +37,43 @@ use crate::service::transaction::transaction_service::{
     DefaultTransactionService, TransactionService,
 };
 
-struct AppState {
+pub struct AppState {
     db_pool: Arc<sqlx::PgPool>,
     auth_service: Arc<AuthService>,
     transaction_service: Arc<dyn TransactionService + Send + Sync>,
+    pub metrics_state: Arc<MetricsState>,
 }
 
 fn cors_fairing() -> rocket_cors::Cors {
     let allowed_origins_str = env::var("ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        .unwrap_or_else(|_| "http://localhost:3000,https://eventsphere-fe.vercel.app".to_string());
     let origins: Vec<&str> = allowed_origins_str.split(',').map(|s| s.trim()).collect();
     let allowed_origins = AllowedOrigins::some_exact(&origins);
 
-    CorsOptions {
-        allowed_origins,
-        allow_credentials: true,
-        ..Default::default()
-    }
-    .to_cors()
-    .expect("Error while building CORS")
+    let allowed_headers_str = env::var("ALLOWED_HEADERS")
+        .unwrap_or_else(|_| "Content-Type,Authorization,X-Requested-With".to_string());
+    let headers: Vec<&str> = allowed_headers_str.split(',').map(|s| s.trim()).collect();
+
+    let expose_headers_str =
+        env::var("EXPOSE_HEADERS").unwrap_or_else(|_| "Content-Length,X-Request-ID".to_string());
+    let expose_headers: std::collections::HashSet<String> = expose_headers_str
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    let preflight_max_age = env::var("PREFLIGHT_MAX_AGE")
+        .unwrap_or_else(|_| "86400".to_string())
+        .parse::<usize>()
+        .unwrap_or(86400);
+
+    CorsOptions::default()
+        .allowed_origins(allowed_origins)
+        .allow_credentials(true)
+        .allowed_headers(rocket_cors::AllowedHeaders::some(&headers))
+        .expose_headers(expose_headers)
+        .max_age(Some(preflight_max_age))
+        .to_cors()
+        .expect("Failed to create CORS fairing")
 }
 
 #[launch]
@@ -102,7 +122,6 @@ fn rocket() -> Rocket<Build> {
 
             let balance_service: Arc<dyn BalanceService + Send + Sync> =
                 Arc::new(DefaultBalanceService::new(balance_repository.clone()));
-
             let payment_service: Arc<dyn PaymentService + Send + Sync> =
                 Arc::new(MockPaymentService::new());
 
@@ -113,10 +132,13 @@ fn rocket() -> Rocket<Build> {
                     payment_service.clone(),
                 ));
 
+            let metrics_state = Arc::new(MetricsState::new());
+
             let state = AppState {
                 db_pool: db_pool_arc.clone(),
                 auth_service: auth_service.clone(),
                 transaction_service: transaction_service.clone(),
+                metrics_state: metrics_state.clone(),
             };
 
             rocket
@@ -129,16 +151,13 @@ fn rocket() -> Rocket<Build> {
                 .manage(transaction_repository.clone())
                 .manage(balance_repository.clone())
                 .manage(db_pool_arc)
+                .manage(metrics_state.clone())
         }))
         .attach(cors_fairing())
+        .attach(MetricsFairing)
+        .mount("/", metrics_routes())
         .mount("/api", auth_routes())
         .mount("/api/transactions", transaction_routes())
         .mount("/api/balance", balance_routes())
         .mount("/api/users", user_routes())
-        .mount("/", routes![all_options])
-}
-
-#[options("/<_..>")]
-fn all_options() -> &'static str {
-    ""
 }
