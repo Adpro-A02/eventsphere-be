@@ -43,17 +43,15 @@ struct AppState {
 
 fn cors_fairing() -> rocket_cors::Cors {
     let allowed_origins_str = env::var("ALLOWED_ORIGINS")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        .unwrap_or_else(|_| "http://localhost:3000,https://eventsphere-fe.vercel.app".to_string());
     let origins: Vec<&str> = allowed_origins_str.split(',').map(|s| s.trim()).collect();
     let allowed_origins = AllowedOrigins::some_exact(&origins);
 
-    CorsOptions {
-        allowed_origins,
-        allow_credentials: true,
-        ..Default::default()
-    }
-    .to_cors()
-    .expect("Error while building CORS")
+    CorsOptions::default()
+        .allowed_origins(allowed_origins)
+        .allow_credentials(true)
+        .to_cors()
+        .expect("Failed to create CORS fairing")
 }
 
 #[launch]
