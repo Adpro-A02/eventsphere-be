@@ -1,6 +1,7 @@
 use crate::model::user::{User, UserRole};
 use crate::repository::user::user_repo::UserRepository;
 use crate::service::auth::auth_service::{AuthService, TokenPair};
+use crate::service::transaction::balance_service::BalanceService;
 use rocket::{State, post, put, get, serde::json::Json, http::Status, routes};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -103,8 +104,8 @@ pub async fn register_handler(
     req: Json<RegisterRequest>,
     user_repository: &State<Arc<dyn UserRepository>>,
     auth_service: &State<Arc<AuthService>>,
-) -> Result<Json<ApiResponse<AuthResponse>>, Status> {
-    let repo = user_repository.inner();
+    balance_service: &State<Arc<dyn BalanceService + Send + Sync>>,
+) -> Result<Json<ApiResponse<AuthResponse>>, Status> {let repo = user_repository.inner();
     let service = auth_service.inner();
     if let Ok(Some(_)) = repo.find_by_email(&req.email).await {
         return Ok(ApiResponse::error(400, "Email already registered"));
@@ -122,6 +123,13 @@ pub async fn register_handler(
         eprintln!("Failed to create user: {:?}", e);
         return Ok(ApiResponse::error(500, &format!("Failed to create user: {}", e)));
     }
+    
+    // Create an initial balance for the user
+    if let Err(e) = balance_service.get_or_create_balance(user.id).await {
+        eprintln!("Failed to create initial balance for user: {:?}", e);
+        // We don't return an error here as the user is already created
+    }
+    
     let token_pair = match service.generate_token(&user).await {
         Ok(tp) => tp,
         Err(_) => return Ok(ApiResponse::error(500, "Failed to generate token")),

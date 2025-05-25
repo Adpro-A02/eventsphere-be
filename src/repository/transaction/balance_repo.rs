@@ -1,15 +1,19 @@
+use async_trait::async_trait;
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::RwLock;
-use sqlx::{PgPool, Row};
-use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::model::transaction::Balance;
 
+#[async_trait]
 pub trait BalancePersistenceStrategy {
-    fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>>;
-    fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>>;
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>>;
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>>;
 }
 
 pub struct InMemoryBalancePersistence {
@@ -24,22 +28,30 @@ impl InMemoryBalancePersistence {
     }
 }
 
+#[async_trait]
 impl BalancePersistenceStrategy for InMemoryBalancePersistence {
-    fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut balances = self.balances.write().unwrap();
         balances.insert(balance.user_id, balance.clone());
         Ok(())
     }
 
-    fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>> {
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>> {
         let balances = self.balances.read().unwrap();
         Ok(balances.get(&user_id).cloned())
     }
 }
 
+#[async_trait]
 pub trait BalanceRepository {
-    fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>>;
-    fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>>;
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>>;
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>>;
 }
 
 pub struct DbBalanceRepository<S: BalancePersistenceStrategy> {
@@ -52,13 +64,17 @@ impl<S: BalancePersistenceStrategy> DbBalanceRepository<S> {
     }
 }
 
-impl<S: BalancePersistenceStrategy> BalanceRepository for DbBalanceRepository<S> {
-    fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>> {
-        self.strategy.save(balance)
+#[async_trait]
+impl<S: BalancePersistenceStrategy + Send + Sync> BalanceRepository for DbBalanceRepository<S> {
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.strategy.save(balance).await
     }
 
-    fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>> {
-        self.strategy.find_by_user_id(user_id)
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>> {
+        self.strategy.find_by_user_id(user_id).await
     }
 }
 
@@ -73,19 +89,13 @@ impl PostgresBalancePersistence {
 }
 
 #[async_trait]
-pub trait AsyncBalancePersistenceStrategy {
-    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>>;
-    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>>;
-}
-
-#[async_trait]
-impl AsyncBalancePersistenceStrategy for PostgresBalancePersistence {
-    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error>> {
+impl BalancePersistenceStrategy for PostgresBalancePersistence {
+    async fn save(&self, balance: &Balance) -> Result<(), Box<dyn Error + Send + Sync>> {
         let query = "INSERT INTO balances (id, user_id, amount, updated_at) 
                     VALUES ($1, $2, $3, $4) 
                     ON CONFLICT (user_id) 
                     DO UPDATE SET amount = EXCLUDED.amount, updated_at = EXCLUDED.updated_at";
-        
+
         let result = sqlx::query(query)
             .bind(balance.id)
             .bind(balance.user_id)
@@ -101,14 +111,17 @@ impl AsyncBalancePersistenceStrategy for PostgresBalancePersistence {
         Ok(())
     }
 
-    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Balance>, Box<dyn Error>> {
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Balance>, Box<dyn Error + Send + Sync>> {
         let query = "SELECT * FROM balances WHERE user_id = $1";
-        
+
         let row = sqlx::query(query)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
-            
+
         if let Some(row) = row {
             let balance = Balance {
                 id: row.get("id"),
