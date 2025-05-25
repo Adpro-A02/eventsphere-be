@@ -19,6 +19,7 @@ use crate::controller::auth::auth_controller::auth_routes;
 use crate::controller::transaction::transaction_controller::{
     balance_routes, transaction_routes, user_routes,
 };
+use crate::controller::health::{health_check, detailed_health_check};
 use crate::metrics::{MetricsFairing, MetricsState, metrics_routes};
 use crate::repository::auth::token_repo::{PostgresRefreshTokenRepository, TokenRepository};
 use crate::repository::transaction::balance_repo::{
@@ -152,10 +153,10 @@ fn rocket() -> Rocket<Build> {
                 .manage(balance_repository.clone())
                 .manage(db_pool_arc)
                 .manage(metrics_state.clone())
-        }))
-        .attach(cors_fairing())
+        }))        .attach(cors_fairing())
         .attach(MetricsFairing)
         .mount("/", metrics_routes())
+        .mount("/", routes![health_check, detailed_health_check])
         .mount("/api", auth_routes())
         .mount("/api/transactions", transaction_routes())
         .mount("/api/balance", balance_routes())
