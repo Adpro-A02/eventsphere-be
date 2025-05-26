@@ -12,13 +12,17 @@ impl Fairing for MetricsFairing {
             name: "Metrics Collection",
             kind: Kind::Request | Kind::Response,
         }
-    }
-
+    }    
+    
     async fn on_request(&self, request: &mut Request<'_>, _: &mut Data<'_>) {
         request.local_cache(|| Instant::now());
     }
 
     async fn on_response<'r>(&self, request: &'r Request<'_>, _response: &mut Response<'r>) {
+        if request.uri().path() == "/metrics" {
+            return;
+        }
+        
         if let Some(metrics_state) = request.rocket().state::<MetricsState>() {
             // Increment request counter
             metrics_state.http_requests_total.inc();

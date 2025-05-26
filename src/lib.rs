@@ -5,6 +5,7 @@ pub mod controller;
 pub mod dto;
 pub mod error;
 pub mod infrastructure;
+pub mod metrics;
 pub mod middleware;
 pub mod model;
 pub mod repository;
