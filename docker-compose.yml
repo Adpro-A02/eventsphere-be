@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:    
+  eventsphere-be:
+    build:
+      context: .
+      args:
+        DATABASE_URL_ARG: ${DATABASE_URL:-postgresql://postgres.adlpwvpelbuntzrwrwvj:jQZSfNlXRNRtVHzF@postgres:5432/postgres}
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres.adlpwvpelbuntzrwrwvj:jQZSfNlXRNRtVHzF@postgres:5432/postgres}
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_key}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-dev_jwt_refresh_secret}
+      - PEPPER=${PEPPER:-dev_password_pepper}
+      - RUST_LOG=${RUST_LOG:-info}
+    networks:
+      - eventsphere-network
+    depends_on:  # Added dependency
+      - postgres
+  postgres:      # Added PostgreSQL service
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres.adlpwvpelbuntzrwrwvj
+      POSTGRES_PASSWORD: jQZSfNlXRNRtVHzF
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - eventsphere-network
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerting:/etc/prometheus/alerting
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - eventsphere-network
+      
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alerting/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - eventsphere-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - eventsphere-network
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+
+networks:
+  eventsphere-network:
+    driver: bridge

@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - staging
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install dependencies
+        run: |
+          cargo install cargo-tarpaulin
+          rustup component add clippy      
+      - name: Run Clippy
+        run: |
+          mkdir -p target
+          cargo clippy --message-format=json > target/clippy.json
+
+      - name: Run Tarpaulin Coverage
+        run: cargo tarpaulin --out Lcov --output-dir ./target/tarpaulin
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
