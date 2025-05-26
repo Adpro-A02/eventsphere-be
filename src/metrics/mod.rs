@@ -1,4 +1,6 @@
-use prometheus::{Counter, Encoder, Gauge, Histogram, HistogramOpts, Registry, TextEncoder};
+use prometheus::{
+    Counter, CounterVec, Encoder, Gauge, Histogram, HistogramOpts, Opts, Registry, TextEncoder,
+};
 use rocket::{Route, State, get, routes};
 use std::sync::Arc;
 
@@ -11,6 +13,7 @@ pub struct MetricsState {
     pub active_connections: Gauge,
     pub request_duration: Histogram,
     pub database_connections: Gauge,
+    pub function_calls_total: CounterVec,
 }
 
 impl MetricsState {
@@ -29,12 +32,17 @@ impl MetricsState {
             "Duration of HTTP requests in seconds",
         ))
         .expect("Failed to create request_duration histogram");
-
         let database_connections = Gauge::new(
             "database_connections",
             "Number of active database connections",
         )
         .expect("Failed to create database_connections gauge");
+
+        let function_calls_total = CounterVec::new(
+            Opts::new("function_calls_total", "Total number of function calls"),
+            &["function"],
+        )
+        .expect("Failed to create function_calls_total counter");
 
         registry
             .register(Box::new(http_requests_total.clone()))
@@ -48,6 +56,9 @@ impl MetricsState {
         registry
             .register(Box::new(database_connections.clone()))
             .expect("Failed to register database_connections");
+        registry
+            .register(Box::new(function_calls_total.clone()))
+            .expect("Failed to register function_calls_total");
 
         Self {
             registry,
@@ -55,7 +66,30 @@ impl MetricsState {
             active_connections,
             request_duration,
             database_connections,
+            function_calls_total,
         }
+    }
+
+    pub fn record_function_call(&self, function_name: &str) {
+        self.function_calls_total
+            .with_label_values(&[function_name])
+            .inc();
+    }
+
+    pub fn record_request(&self, method: &str, endpoint: &str, status_code: u16) {
+        self.http_requests_total.inc();
+    }
+
+    pub fn set_active_connections(&self, count: f64) {
+        self.active_connections.set(count);
+    }
+
+    pub fn set_database_connections(&self, count: f64) {
+        self.database_connections.set(count);
+    }
+
+    pub fn record_request_duration(&self, duration_seconds: f64) {
+        self.request_duration.observe(duration_seconds);
     }
 }
 

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::model::transaction::{Transaction, Balance};
 use crate::service::transaction::transaction_service::TransactionService;
+use crate::metrics::MetricsState;
 
 pub struct UuidParam(pub Uuid);
 
@@ -152,7 +153,10 @@ pub async fn create_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<CreateTransactionRequest>,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Transaction>>, Status> {
+    metrics_state.record_function_call("create_transaction_handler");
+    
     // Verify the authenticated user matches the user_id in the request or is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -193,7 +197,10 @@ pub async fn process_payment_handler(
     transaction_id: UuidParam,
     req: Json<ProcessPaymentRequest>,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Transaction>>, Status> {
+    metrics_state.record_function_call("process_payment_handler");
+    
     // Check if the transaction belongs to the authenticated user or user is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -234,7 +241,10 @@ pub async fn validate_payment_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<bool>>, Status> {
+    metrics_state.record_function_call("validate_payment_handler");
+    
     // Check if the transaction belongs to the authenticated user or user is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -272,7 +282,10 @@ pub async fn refund_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Transaction>>, Status> {
+    metrics_state.record_function_call("refund_transaction_handler");
+    
     // Check if the transaction belongs to the authenticated user or user is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -310,7 +323,10 @@ pub async fn get_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Transaction>>, Status> {
+    metrics_state.record_function_call("get_transaction_handler");
+    
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
         Err(_) => return Err(Status::Unauthorized),
@@ -340,7 +356,10 @@ pub async fn get_user_transactions_handler(
     token: crate::middleware::auth::JwtToken,
     user_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Vec<Transaction>>>, Status> {
+    metrics_state.record_function_call("get_user_transactions_handler");
+    
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
         Err(_) => return Err(Status::Unauthorized),
@@ -370,7 +389,10 @@ pub async fn get_user_balance_handler(
     token: crate::middleware::auth::JwtToken,
     user_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<Balance>>, Status> {
+    metrics_state.record_function_call("get_user_balance_handler");
+    
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
         Err(_) => return Err(Status::Unauthorized),
@@ -399,7 +421,10 @@ pub async fn add_funds_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<AddFundsRequest>,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<BalanceResponse>>, Status> {
+    metrics_state.record_function_call("add_funds_handler");
+    
     // Verify the authenticated user matches the user_id in the request or is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -433,7 +458,10 @@ pub async fn withdraw_funds_handler(
     token: crate::middleware::auth::JwtToken,
     req: Json<WithdrawFundsRequest>,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<BalanceResponse>>, Status> {
+    metrics_state.record_function_call("withdraw_funds_handler");
+    
     // Verify the authenticated user matches the user_id in the request or is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
@@ -470,7 +498,10 @@ pub async fn delete_transaction_handler(
     token: crate::middleware::auth::JwtToken,
     transaction_id: UuidParam,
     service: &State<Arc<dyn TransactionService + Send + Sync>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<()>>, Status> {
+    metrics_state.record_function_call("delete_transaction_handler");
+    
     // Check if the transaction belongs to the authenticated user or user is admin
     let token_user_id = match uuid::Uuid::parse_str(&token.user_id) {
         Ok(id) => id,

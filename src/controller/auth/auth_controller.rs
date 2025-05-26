@@ -2,6 +2,7 @@ use crate::model::user::{User, UserRole};
 use crate::repository::user::user_repo::UserRepository;
 use crate::service::auth::auth_service::{AuthService, TokenPair};
 use crate::service::transaction::balance_service::BalanceService;
+use crate::metrics::MetricsState;
 use rocket::{State, post, put, get, serde::json::Json, http::Status, routes};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -105,7 +106,11 @@ pub async fn register_handler(
     user_repository: &State<Arc<dyn UserRepository>>,
     auth_service: &State<Arc<AuthService>>,
     balance_service: &State<Arc<dyn BalanceService + Send + Sync>>,
-) -> Result<Json<ApiResponse<AuthResponse>>, Status> {let repo = user_repository.inner();
+    metrics_state: &State<Arc<MetricsState>>,
+) -> Result<Json<ApiResponse<AuthResponse>>, Status> {
+    metrics_state.record_function_call("register_handler");
+    
+    let repo = user_repository.inner();
     let service = auth_service.inner();
     if let Ok(Some(_)) = repo.find_by_email(&req.email).await {
         return Ok(ApiResponse::error(400, "Email already registered"));
@@ -150,7 +155,10 @@ pub async fn login_handler(
     req: Json<LoginRequest>,
     user_repository: &State<Arc<dyn UserRepository>>,
     auth_service: &State<Arc<AuthService>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<AuthResponse>>, Status> {
+    metrics_state.record_function_call("login_handler");
+    
     let repo = user_repository.inner();
     let service = auth_service.inner();
     let user = match repo.find_by_email(&req.email).await {
@@ -185,7 +193,10 @@ pub async fn get_user_handler(
     token: crate::middleware::auth::JwtToken,
     user_id: &str,
     user_repository: &State<Arc<dyn UserRepository>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<UserResponse>>, Status> {
+    metrics_state.record_function_call("get_user_handler");
+    
     let uuid = match Uuid::parse_str(user_id) {
         Ok(id) => id,
         Err(_) => return Ok(ApiResponse::error(400, "Invalid UUID format")),
@@ -221,7 +232,10 @@ pub async fn update_profile_handler(
     user_id: &str,
     req: Json<UpdateProfileRequest>,
     user_repository: &State<Arc<dyn UserRepository>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<UserResponse>>, Status> {
+    metrics_state.record_function_call("update_profile_handler");
+    
     let uuid = match Uuid::parse_str(user_id) {
         Ok(id) => id,
         Err(_) => return Ok(ApiResponse::error(400, "Invalid UUID format")),
@@ -266,7 +280,10 @@ pub async fn update_profile_handler(
 pub async fn refresh_token_handler(
     req: Json<RefreshTokenRequest>,
     auth_service: &State<Arc<AuthService>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<TokenPair>>, Status> {
+    metrics_state.record_function_call("refresh_token_handler");
+    
     let service = auth_service.inner();
     match service.refresh_access_token(&req.refresh_token).await {
         Ok(token_pair) => Ok(ApiResponse::success("Token refreshed", token_pair)),
@@ -278,7 +295,10 @@ pub async fn refresh_token_handler(
 pub async fn get_current_user_handler(
     token: crate::middleware::auth::JwtToken,
     user_repository: &State<Arc<dyn UserRepository>>,
+    metrics_state: &State<Arc<MetricsState>>,
 ) -> Result<Json<ApiResponse<UserResponse>>, Status> {
+    metrics_state.record_function_call("get_current_user_handler");
+    
     let user_id = match Uuid::parse_str(&token.user_id) {
         Ok(id) => id,
         Err(_) => return Err(Status::Unauthorized),

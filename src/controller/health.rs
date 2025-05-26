@@ -1,8 +1,11 @@
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::get;
+use rocket::{get, State};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::metrics::MetricsState;
 
 #[derive(Serialize, Deserialize)]
 pub struct HealthResponse {
@@ -35,7 +38,9 @@ static START_TIME: once_cell::sync::Lazy<u64> = once_cell::sync::Lazy::new(|| {
 });
 
 #[get("/health")]
-pub fn health_check() -> Json<HealthResponse> {
+pub fn health_check(metrics_state: &State<Arc<MetricsState>>) -> Json<HealthResponse> {
+    metrics_state.record_function_call("health_check");
+    
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -51,7 +56,12 @@ pub fn health_check() -> Json<HealthResponse> {
 }
 
 #[get("/health/detailed")]
-pub async fn detailed_health_check(db_pool: &rocket::State<std::sync::Arc<sqlx::PgPool>>) -> Result<Json<DetailedHealthResponse>, Status> {
+pub async fn detailed_health_check(
+    db_pool: &rocket::State<std::sync::Arc<sqlx::PgPool>>,
+    metrics_state: &State<Arc<MetricsState>>,
+) -> Result<Json<DetailedHealthResponse>, Status> {
+    metrics_state.record_function_call("detailed_health_check");
+    
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

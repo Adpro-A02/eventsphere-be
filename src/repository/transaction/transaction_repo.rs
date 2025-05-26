@@ -27,6 +27,12 @@ pub trait TransactionPersistenceStrategy {
         id: Uuid,
         status: TransactionStatus,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn update_status_and_reference(
+        &self,
+        id: Uuid,
+        status: TransactionStatus,
+        external_reference: Option<String>,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
     async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
 
@@ -90,6 +96,24 @@ impl TransactionPersistenceStrategy for InMemoryTransactionPersistence {
         }
     }
 
+    async fn update_status_and_reference(
+        &self,
+        id: Uuid,
+        status: TransactionStatus,
+        external_reference: Option<String>,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        let mut transactions = self.transactions.write().unwrap();
+
+        if let Some(transaction) = transactions.get_mut(&id) {
+            transaction.status = status;
+            transaction.external_reference = external_reference;
+            transaction.updated_at = Utc::now();
+            Ok(transaction.clone())
+        } else {
+            Err("Transaction not found".into())
+        }
+    }
+
     async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.write().unwrap();
 
@@ -119,6 +143,12 @@ pub trait TransactionRepository {
         &self,
         id: Uuid,
         status: TransactionStatus,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
+    async fn update_status_and_reference(
+        &self,
+        id: Uuid,
+        status: TransactionStatus,
+        external_reference: Option<String>,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>>;
     async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>>;
 }
@@ -166,6 +196,17 @@ impl<S: TransactionPersistenceStrategy + Send + Sync> TransactionRepository
         self.strategy.update_status(id, status).await
     }
 
+    async fn update_status_and_reference(
+        &self,
+        id: Uuid,
+        status: TransactionStatus,
+        external_reference: Option<String>,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        self.strategy
+            .update_status_and_reference(id, status, external_reference)
+            .await
+    }
+
     async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         self.strategy.delete(id).await
     }
@@ -192,15 +233,16 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             .bind(transaction.id)
             .bind(transaction.user_id)
             .bind(transaction.ticket_id)
-            .bind(transaction.amount)            .bind(&transaction.description)
+            .bind(transaction.amount)
+            .bind(&transaction.description)
             .bind(&transaction.payment_method)
             .bind(&transaction.external_reference)
             .bind(transaction.status.to_string().to_lowercase())
             .bind(transaction.created_at)
             .bind(transaction.updated_at)
             .fetch_one(&self.pool)
-            .await?;        
-        
+            .await?;
+
         let status_str: String = row.get("status");
         let saved_transaction = Transaction {
             id: row.get("id"),
@@ -226,7 +268,8 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         let row = sqlx::query(query)
             .bind(id)
             .fetch_optional(&self.pool)
-            .await?;        if let Some(row) = row {
+            .await?;
+        if let Some(row) = row {
             let status_str: String = row.get("status");
             let transaction = Transaction {
                 id: row.get("id"),
@@ -253,7 +296,8 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         let rows = sqlx::query(query)
             .bind(user_id)
             .fetch_all(&self.pool)
-            .await?;        let transactions = rows
+            .await?;
+        let transactions = rows
             .iter()
             .map(|row| {
                 let status_str: String = row.get("status");
@@ -273,7 +317,8 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             .collect();
 
         Ok(transactions)
-    }    async fn update_status(
+    }
+    async fn update_status(
         &self,
         id: Uuid,
         status: TransactionStatus,
@@ -284,7 +329,43 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             .bind(status.to_string().to_lowercase())
             .bind(id)
             .fetch_optional(&self.pool)
-            .await?;        match row {
+            .await?;
+        match row {
+            Some(row) => {
+                let status_str: String = row.get("status");
+                let transaction = Transaction {
+                    id: row.get("id"),
+                    user_id: row.get("user_id"),
+                    ticket_id: row.get("ticket_id"),
+                    amount: row.get("amount"),
+                    description: row.get("description"),
+                    payment_method: row.get("payment_method"),
+                    external_reference: row.get("external_reference"),
+                    status: TransactionStatus::from_string(&status_str),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                };
+                Ok(transaction)
+            }
+            None => Err("Transaction not found".into()),
+        }
+    }
+
+    async fn update_status_and_reference(
+        &self,
+        id: Uuid,
+        status: TransactionStatus,
+        external_reference: Option<String>,
+    ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        let query = "UPDATE transactions SET status = $1::transaction_status, external_reference = $2 WHERE id = $3 RETURNING id, user_id, ticket_id, amount, description, payment_method, external_reference, status::text as status, created_at, updated_at";
+
+        let row = sqlx::query(query)
+            .bind(status.to_string().to_lowercase())
+            .bind(external_reference)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
+        match row {
             Some(row) => {
                 let status_str: String = row.get("status");
                 let transaction = Transaction {

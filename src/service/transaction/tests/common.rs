@@ -60,6 +60,20 @@ impl TransactionRepository for MockTransactionRepository {
         }
     }
 
+    async fn update_status_and_reference(&self, id: Uuid, status: TransactionStatus, external_reference: Option<String>) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
+        let mut transactions = self.transactions.lock().unwrap();
+        
+        match transactions.get_mut(&id) {
+            Some(transaction) => {
+                transaction.status = status;
+                transaction.external_reference = external_reference;
+                transaction.updated_at = Utc::now();
+                Ok(transaction.clone())
+            },
+            None => Err("Transaction not found".into()),
+        }
+    }
+
     async fn delete(&self, id: Uuid) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut transactions = self.transactions.lock().unwrap();
         if transactions.remove(&id).is_some() {

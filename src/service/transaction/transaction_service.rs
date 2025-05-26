@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use std::error::Error;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -126,33 +125,22 @@ impl TransactionService for DefaultTransactionService {
 
         if transaction.is_finalized() {
             return Err("Transaction is already finalized".into());
-        }
-
-        if let Some(ref_id) = external_reference {
-            let mut updated = self
+        }        if let Some(ref_id) = external_reference {
+            return self
                 .transaction_repository
-                .update_status(transaction_id, TransactionStatus::Success)
-                .await?;
-            updated.external_reference = Some(ref_id);
-            return self.transaction_repository.save(&updated).await;
+                .update_status_and_reference(transaction_id, TransactionStatus::Success, Some(ref_id))
+                .await;
         }
 
-        let (success, reference) = self.payment_service.process_payment(&transaction).await?;
-
-        let status = if success {
+        let (success, reference) = self.payment_service.process_payment(&transaction).await?;        let status = if success {
             TransactionStatus::Success
         } else {
             TransactionStatus::Failed
         };
 
-        let mut updated_transaction = self
-            .transaction_repository
-            .update_status(transaction_id, status)
-            .await?;
-        updated_transaction.external_reference = reference;
-        updated_transaction.updated_at = Utc::now();
-
-        self.transaction_repository.save(&updated_transaction).await
+        self.transaction_repository
+            .update_status_and_reference(transaction_id, status, reference)
+            .await
     }
 
     async fn validate_payment(
