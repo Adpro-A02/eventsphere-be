@@ -187,7 +187,7 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         &self,
         transaction: &Transaction,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
-        let query = "INSERT INTO transactions (id, user_id, ticket_id, amount, description, payment_method, external_reference, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::transaction_status, $9, $10) RETURNING *";
+        let query = "INSERT INTO transactions (id, user_id, ticket_id, amount, description, payment_method, external_reference, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::transaction_status, $9, $10) RETURNING id, user_id, ticket_id, amount, description, payment_method, external_reference, status::text as status, created_at, updated_at";
         let row = sqlx::query(query)
             .bind(transaction.id)
             .bind(transaction.user_id)
@@ -199,8 +199,9 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             .bind(transaction.created_at)
             .bind(transaction.updated_at)
             .fetch_one(&self.pool)
-            .await?;
-
+            .await?;        
+        
+        let status_str: String = row.get("status");
         let saved_transaction = Transaction {
             id: row.get("id"),
             user_id: row.get("user_id"),
@@ -209,7 +210,7 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
             description: row.get("description"),
             payment_method: row.get("payment_method"),
             external_reference: row.get("external_reference"),
-            status: TransactionStatus::from_string(row.get("status")),
+            status: TransactionStatus::from_string(&status_str),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         };
@@ -221,12 +222,12 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         &self,
         id: Uuid,
     ) -> Result<Option<Transaction>, Box<dyn Error + Send + Sync>> {
-        let query = "SELECT * FROM transactions WHERE id = $1";
+        let query = "SELECT id, user_id, ticket_id, amount, description, payment_method, external_reference, status::text as status, created_at, updated_at FROM transactions WHERE id = $1";
         let row = sqlx::query(query)
             .bind(id)
             .fetch_optional(&self.pool)
-            .await?;
-        if let Some(row) = row {
+            .await?;        if let Some(row) = row {
+            let status_str: String = row.get("status");
             let transaction = Transaction {
                 id: row.get("id"),
                 user_id: row.get("user_id"),
@@ -235,7 +236,7 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
                 description: row.get("description"),
                 payment_method: row.get("payment_method"),
                 external_reference: row.get("external_reference"),
-                status: TransactionStatus::from_string(row.get("status")),
+                status: TransactionStatus::from_string(&status_str),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             };
@@ -248,25 +249,26 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<Transaction>, Box<dyn Error + Send + Sync>> {
-        let query = "SELECT * FROM transactions WHERE user_id = $1";
+        let query = "SELECT id, user_id, ticket_id, amount, description, payment_method, external_reference, status::text as status, created_at, updated_at FROM transactions WHERE user_id = $1";
         let rows = sqlx::query(query)
             .bind(user_id)
             .fetch_all(&self.pool)
-            .await?;
-
-        let transactions = rows
+            .await?;        let transactions = rows
             .iter()
-            .map(|row| Transaction {
-                id: row.get("id"),
-                user_id: row.get("user_id"),
-                ticket_id: row.get("ticket_id"),
-                amount: row.get("amount"),
-                description: row.get("description"),
-                payment_method: row.get("payment_method"),
-                external_reference: row.get("external_reference"),
-                status: TransactionStatus::from_string(row.get("status")),
-                created_at: row.get("created_at"),
-                updated_at: row.get("updated_at"),
+            .map(|row| {
+                let status_str: String = row.get("status");
+                Transaction {
+                    id: row.get("id"),
+                    user_id: row.get("user_id"),
+                    ticket_id: row.get("ticket_id"),
+                    amount: row.get("amount"),
+                    description: row.get("description"),
+                    payment_method: row.get("payment_method"),
+                    external_reference: row.get("external_reference"),
+                    status: TransactionStatus::from_string(&status_str),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                }
             })
             .collect();
 
@@ -276,16 +278,15 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
         id: Uuid,
         status: TransactionStatus,
     ) -> Result<Transaction, Box<dyn Error + Send + Sync>> {
-        let query = "UPDATE transactions SET status = $1::transaction_status WHERE id = $2 RETURNING *";
+        let query = "UPDATE transactions SET status = $1::transaction_status WHERE id = $2 RETURNING id, user_id, ticket_id, amount, description, payment_method, external_reference, status::text as status, created_at, updated_at";
 
         let row = sqlx::query(query)
             .bind(status.to_string().to_lowercase())
             .bind(id)
             .fetch_optional(&self.pool)
-            .await?;
-
-        match row {
+            .await?;        match row {
             Some(row) => {
+                let status_str: String = row.get("status");
                 let transaction = Transaction {
                     id: row.get("id"),
                     user_id: row.get("user_id"),
@@ -294,7 +295,7 @@ impl TransactionPersistenceStrategy for PostgresTransactionPersistence {
                     description: row.get("description"),
                     payment_method: row.get("payment_method"),
                     external_reference: row.get("external_reference"),
-                    status: TransactionStatus::from_string(row.get("status")),
+                    status: TransactionStatus::from_string(&status_str),
                     created_at: row.get("created_at"),
                     updated_at: row.get("updated_at"),
                 };

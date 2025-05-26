@@ -60,7 +60,7 @@ impl MetricsState {
 }
 
 #[get("/metrics")]
-pub fn metrics_handler(metrics_state: &State<MetricsState>) -> String {
+pub fn metrics_handler(metrics_state: &State<Arc<MetricsState>>) -> String {
     let encoder = TextEncoder::new();
     let metric_families = metrics_state.registry.gather();
     let mut buffer = Vec::new();
